@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { UserRole, UploadedDocument } from '@/types/auth';
+import type { UploadedDocument } from '@/types/auth';
 
 export const loginSchema = z.object({
   email: z
@@ -17,9 +17,9 @@ export type LoginFormData = z.infer<typeof loginSchema>;
 export interface SignupFormData {
   firstName: string;
   lastName: string;
+  documentNumber: string;
   email: string;
   phoneNumber: string;
-  role: UserRole;
   password: string;
   confirmPassword: string;
   signedDocument: UploadedDocument | null;
@@ -34,15 +34,18 @@ export const signupSchema = z
     lastName: z
       .string()
       .min(2, 'El apellido debe tener al menos 2 caracteres'),
+    documentNumber: z
+      .string()
+      .min(6, 'Ingresa un número de cédula válido')
+      .regex(/^[0-9.\s]+$/, 'Solo se permiten números en la cédula'),
     email: z
       .string()
-      .min(1, 'El correo electrónico es requerido')
+      .min(1, 'El correo institucional es requerido')
       .email('Ingresa un correo electrónico válido'),
     phoneNumber: z
       .string()
       .min(7, 'Ingresa un número de teléfono válido (mínimo 7 dígitos)')
       .regex(/^[0-9+\s()-]+$/, 'Solo se permiten números y símbolos telefónicos'),
-    role: z.enum(['estudiante', 'docente', 'coordinador', 'administrador']),
     password: z
       .string()
       .min(8, 'La contraseña debe tener al menos 8 caracteres')
@@ -51,7 +54,7 @@ export const signupSchema = z
     confirmPassword: z
       .string()
       .min(1, 'Debes confirmar tu contraseña'),
-    // Documento de autorización firmado: BLOQUEANTE
+    // Autorización de notificación electrónica firmada vía Ciudadano Digital: BLOQUEANTE
     signedDocument: z
       .object({
         name: z.string().min(1, 'Nombre de archivo inválido'),
@@ -62,7 +65,7 @@ export const signupSchema = z
       })
       .nullable()
       .refine((val) => val !== null && val !== undefined, {
-        message: 'Debes adjuntar el documento de autorización firmado para poder registrarte',
+        message: 'Debes adjuntar la autorización de notificación electrónica firmada vía Ciudadano Digital para poder registrarte',
       }),
     termsAccepted: z.boolean().refine((val) => val === true, {
       message: 'Debes aceptar los Términos y Políticas de Privacidad',

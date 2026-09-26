@@ -100,7 +100,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
           <button
             type="button"
             onClick={handleLoadSampleDocument}
-            className="text-[11px] text-indigo-600 hover:text-indigo-800 underline font-medium inline-flex items-center gap-1"
+            className="text-[11px] text-brand-600 hover:text-brand-800 underline font-medium inline-flex items-center gap-1"
           >
             <Download className="w-3 h-3" />
             Cargar documento de prueba
@@ -128,23 +128,23 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
           onClick={() => fileInputRef.current?.click()}
           className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-all ${
             isDragging
-              ? 'border-indigo-600 bg-indigo-50/60 scale-[1.01]'
+              ? 'border-brand-600 bg-brand-50/60 scale-[1.01]'
               : error
               ? 'border-red-400 bg-red-50/40 hover:bg-red-50/60'
-              : 'border-neutral-300 hover:border-indigo-400 hover:bg-neutral-50/80 bg-white'
+              : 'border-neutral-300 hover:border-brand-400 hover:bg-neutral-50/80 bg-white'
           }`}
         >
           <div className="flex flex-col items-center justify-center gap-2">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                error ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'
+                error ? 'bg-red-100 text-red-600' : 'bg-brand-100 text-brand-600'
               }`}
             >
               <Upload className="w-5 h-5" />
             </div>
             <div>
               <p className="text-xs font-medium text-neutral-800">
-                <span className="text-indigo-600 font-semibold underline">Haz clic para adjuntar</span> o arrastra el archivo aquí
+                <span className="text-brand-600 font-semibold underline">Haz clic para adjuntar</span> o arrastra el archivo aquí
               </p>
               <p className="text-[11px] text-neutral-500 mt-0.5">
                 PDF, JPG o PNG firmado (máx. 10MB)
@@ -183,7 +183,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
               <button
                 type="button"
                 onClick={() => setPreviewOpen(true)}
-                className="p-1.5 text-neutral-600 hover:text-indigo-600 hover:bg-white rounded-md transition-colors"
+                className="p-1.5 text-neutral-600 hover:text-brand-600 hover:bg-white rounded-md transition-colors"
                 title="Vista previa"
               >
                 <Eye className="w-4 h-4" />
@@ -214,7 +214,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
+                <FileText className="w-5 h-5 text-brand-600" />
                 <h3 className="text-sm font-semibold text-neutral-800 truncate">
                   {value.name}
                 </h3>
@@ -238,7 +238,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
                 />
               ) : (
                 <div className="bg-neutral-100 rounded-lg p-8 flex flex-col items-center justify-center gap-3">
-                  <FileText className="w-16 h-16 text-indigo-500 animate-pulse" />
+                  <FileText className="w-16 h-16 text-brand-500 animate-pulse" />
                   <p className="text-xs text-neutral-600 font-medium">
                     Documento PDF firmado: <strong className="text-neutral-800">{value.name}</strong>
                   </p>
@@ -253,7 +253,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
               <button
                 type="button"
                 onClick={() => setPreviewOpen(false)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-xs font-semibold transition-colors"
               >
                 Entendido
               </button>

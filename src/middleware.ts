@@ -17,20 +17,25 @@ export function middleware(request: NextRequest) {
     }
 
     // 2. Role-specific route protections
-    if (pathname.startsWith('/dashboard/admin') && authRole !== 'administrador') {
+    if (
+      pathname.startsWith('/dashboard/admin') &&
+      authRole !== 'super_usuario' &&
+      authRole !== 'administrativo'
+    ) {
       const unauthUrl = new URL('/unauthorized', request.url);
-      unauthUrl.searchParams.set('required', 'administrador');
+      unauthUrl.searchParams.set('required', 'super_usuario');
       unauthUrl.searchParams.set('current', authRole || 'desconocido');
       return NextResponse.redirect(unauthUrl);
     }
 
     if (
-      pathname.startsWith('/dashboard/coordinador') &&
-      authRole !== 'coordinador' &&
-      authRole !== 'administrador'
+      pathname.startsWith('/dashboard/validador') &&
+      authRole !== 'validador' &&
+      authRole !== 'super_usuario' &&
+      authRole !== 'administrativo'
     ) {
       const unauthUrl = new URL('/unauthorized', request.url);
-      unauthUrl.searchParams.set('required', 'coordinador');
+      unauthUrl.searchParams.set('required', 'validador');
       unauthUrl.searchParams.set('current', authRole || 'desconocido');
       return NextResponse.redirect(unauthUrl);
     }
@@ -38,7 +43,8 @@ export function middleware(request: NextRequest) {
     if (
       pathname.startsWith('/dashboard/docente') &&
       authRole !== 'docente' &&
-      authRole !== 'administrador'
+      authRole !== 'super_usuario' &&
+      authRole !== 'administrativo'
     ) {
       const unauthUrl = new URL('/unauthorized', request.url);
       unauthUrl.searchParams.set('required', 'docente');
@@ -46,27 +52,8 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(unauthUrl);
     }
 
-    if (
-      pathname.startsWith('/dashboard/estudiante') &&
-      authRole !== 'estudiante' &&
-      authRole !== 'administrador'
-    ) {
-      const unauthUrl = new URL('/unauthorized', request.url);
-      unauthUrl.searchParams.set('required', 'estudiante');
-      unauthUrl.searchParams.set('current', authRole || 'desconocido');
-      return NextResponse.redirect(unauthUrl);
-    }
-
-    if (
-      pathname.startsWith('/dashboard/documentos') &&
-      authRole !== 'coordinador' &&
-      authRole !== 'administrador'
-    ) {
-      const unauthUrl = new URL('/unauthorized', request.url);
-      unauthUrl.searchParams.set('required', 'coordinador');
-      unauthUrl.searchParams.set('current', authRole || 'desconocido');
-      return NextResponse.redirect(unauthUrl);
-    }
+    // /dashboard/documentos shows a docente's own submitted files, so any
+    // authenticated role in the process can reach it (docente included).
   }
 
   return NextResponse.next();

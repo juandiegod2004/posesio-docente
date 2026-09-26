@@ -61,11 +61,11 @@ export default function DocumentosRadicadosPage() {
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <span className="p-2 bg-blue-100 text-blue-800 rounded-xl">
+            <span className="p-2 bg-brand-100 text-brand-800 rounded-xl">
               <FolderOpen className="w-5 h-5" />
             </span>
             <div>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-neutral-900">
+              <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">
                 Mis Documentos Radicados para Posesión
               </h1>
               <p className="text-xs text-neutral-500 mt-0.5">
@@ -82,7 +82,7 @@ export default function DocumentosRadicadosPage() {
             placeholder="Buscar entre radicados..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-blue-600 bg-white"
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-brand-600 bg-white"
           />
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
         </div>
@@ -94,7 +94,7 @@ export default function DocumentosRadicadosPage() {
           <div className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
             Total de Soportes Subidos
           </div>
-          <div className="text-2xl font-black text-neutral-900 mt-1 font-mono">
+          <div className="text-2xl font-bold text-neutral-900 mt-1">
             {uploadedDocs.length} de {items.length} archivos radicados
           </div>
           <div className="text-xs text-neutral-500 mt-0.5">
@@ -104,7 +104,7 @@ export default function DocumentosRadicadosPage() {
 
         <Link
           href="/dashboard/docente"
-          className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 self-start sm:self-auto"
+          className="px-4 py-2.5 bg-brand-700 hover:bg-brand-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 self-start sm:self-auto"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Volver al Checklist Completo</span>
@@ -136,7 +136,7 @@ export default function DocumentosRadicadosPage() {
               ) : (
                 filteredDocs.map((item) => (
                   <tr key={item.id} className="hover:bg-neutral-50/80 transition-colors">
-                    <td className="py-3.5 px-6 font-mono font-bold text-neutral-700">
+                    <td className="py-3.5 px-6 font-semibold text-neutral-700">
                       #{item.id}
                     </td>
                     <td className="py-3.5 px-6 font-semibold text-neutral-900 max-w-xs">
@@ -147,13 +147,13 @@ export default function DocumentosRadicadosPage() {
                         </div>
                       )}
                     </td>
-                    <td className="py-3.5 px-6 font-mono text-blue-700 font-medium">
+                    <td className="py-3.5 px-6 text-brand-700 font-medium">
                       <div className="flex items-center gap-1.5 truncate max-w-xs">
-                        <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <FileText className="w-4 h-4 text-brand-600 flex-shrink-0" />
                         <span className="truncate">{item.fileName}</span>
                       </div>
                     </td>
-                    <td className="py-3.5 px-6 text-neutral-600 font-mono">
+                    <td className="py-3.5 px-6 text-neutral-600">
                       {item.fileSize ? `${(item.fileSize / 1024).toFixed(0)} KB` : 'N/A'}
                     </td>
                     <td className="py-3.5 px-6 text-neutral-500">
@@ -185,7 +185,7 @@ export default function DocumentosRadicadosPage() {
                       <button
                         type="button"
                         onClick={() => setPreviewDoc(item)}
-                        className="p-1.5 text-neutral-600 hover:text-blue-700 hover:bg-neutral-100 rounded-lg transition-colors"
+                        className="p-1.5 text-neutral-600 hover:text-brand-700 hover:bg-neutral-100 rounded-lg transition-colors"
                         title="Ver detalle del archivo"
                       >
                         <Eye className="w-4 h-4 inline" />
@@ -205,7 +205,7 @@ export default function DocumentosRadicadosPage() {
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-700" />
+                <FileText className="w-5 h-5 text-brand-700" />
                 <h3 className="text-sm font-bold text-neutral-900 truncate">
                   {previewDoc.fileName}
                 </h3>
@@ -220,17 +220,17 @@ export default function DocumentosRadicadosPage() {
             </div>
 
             <div className="bg-neutral-100 rounded-xl p-6 text-center space-y-3">
-              <FileCheck2 className="w-16 h-16 text-blue-600 mx-auto animate-pulse" />
+              <FileCheck2 className="w-16 h-16 text-brand-600 mx-auto animate-pulse" />
               <div className="space-y-1">
                 <p className="text-xs font-bold text-neutral-800">
                   {previewDoc.title}
                 </p>
-                <p className="text-[11px] text-neutral-500 font-mono">
+                <p className="text-[11px] text-neutral-500">
                   Ítem #{previewDoc.id} • {previewDoc.fileName}
                 </p>
                 <p className="text-[11px] text-neutral-500">
                   Estado actual:{' '}
-                  <span className="font-bold capitalize text-blue-700">
+                  <span className="font-bold capitalize text-brand-700">
                     {previewDoc.status.replace('_', ' ')}
                   </span>
                 </p>
@@ -244,7 +244,7 @@ export default function DocumentosRadicadosPage() {
               <button
                 type="button"
                 onClick={() => setPreviewDoc(null)}
-                className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition-colors"
+                className="px-4 py-2 bg-brand-700 hover:bg-brand-800 text-white rounded-xl text-xs font-bold transition-colors"
               >
                 Cerrar vista
               </button>

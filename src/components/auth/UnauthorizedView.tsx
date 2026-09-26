@@ -4,7 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { ShieldX, ArrowLeft, RefreshCw, LogOut } from 'lucide-react';
+import { ROLES } from '@/lib/constants/roles';
+import { ShieldX, ArrowLeft, LogOut } from 'lucide-react';
 import { UserRole } from '@/types/auth';
 
 export function UnauthorizedView() {
@@ -12,12 +13,12 @@ export function UnauthorizedView() {
   const searchParams = useSearchParams();
   const { user, switchRole, logout } = useAuth();
 
-  const requiredRole = searchParams.get('required') || 'administrador';
-  const currentRole = user?.role || searchParams.get('current') || 'sin autenticar';
+  const requiredRole = (searchParams.get('required') || 'super_usuario') as UserRole;
+  const currentRole = user?.role || (searchParams.get('current') as UserRole) || null;
 
   const handleRoleElevate = (role: UserRole) => {
     switchRole(role);
-    router.push(`/dashboard/${role}`);
+    router.push('/dashboard');
   };
 
   return (
@@ -39,14 +40,14 @@ export function UnauthorizedView() {
         <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-xs space-y-2 text-left">
           <div className="flex justify-between items-center">
             <span className="text-neutral-500">Tu rol actual:</span>
-            <span className="font-semibold capitalize px-2 py-0.5 rounded bg-neutral-200 text-neutral-800">
-              {currentRole}
+            <span className="font-semibold px-2 py-0.5 rounded bg-neutral-200 text-neutral-800">
+              {currentRole ? ROLES[currentRole].label : 'Sin autenticar'}
             </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-neutral-500">Rol requerido:</span>
-            <span className="font-semibold capitalize px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
-              {requiredRole}
+            <span className="font-semibold px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+              {ROLES[requiredRole]?.label || requiredRole}
             </span>
           </div>
         </div>
@@ -57,18 +58,18 @@ export function UnauthorizedView() {
             ¿Probando el sistema? Cambia de rol para acceder:
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {(['administrador', 'coordinador', 'docente', 'estudiante'] as UserRole[]).map((r) => (
+            {(Object.keys(ROLES) as UserRole[]).map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => handleRoleElevate(r)}
                 className={`text-xs py-1.5 px-2.5 rounded-md border text-center font-medium transition-all ${
                   r === requiredRole
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-bold'
+                    ? 'border-brand-600 bg-brand-50 text-brand-700 font-bold'
                     : 'border-neutral-200 hover:bg-neutral-50 text-neutral-700'
                 }`}
               >
-                Cambiar a {r}
+                Cambiar a {ROLES[r].label}
               </button>
             ))}
           </div>
@@ -77,7 +78,7 @@ export function UnauthorizedView() {
         <div className="flex flex-col gap-2 pt-2">
           <Link
             href="/dashboard"
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-2.5 bg-brand-700 hover:bg-brand-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Ir a mi panel permitido</span>

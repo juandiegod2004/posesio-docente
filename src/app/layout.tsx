@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 
-const jakarta = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
   variable: '--font-sans',
@@ -11,8 +11,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'No Pierdas el Viaje - Secretaría de Educación',
-  description: 'Sistema de autenticación y gestión del programa No Pierdas el Viaje de la Secretaría de Educación.',
+  title: 'Posesión Docente - Secretaría de Educación del Magdalena',
+  description: 'Plataforma para la carga, seguimiento y validación de los documentos requeridos en el proceso de posesión docente de la Secretaría de Educación del Magdalena.',
   icons: {
     icon: '/logo-secretaria-educacion.png',
   },
@@ -24,8 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${jakarta.variable} font-sans`}>
-      <body className="min-h-screen bg-white text-neutral-900 antialiased selection:bg-indigo-100 selection:text-indigo-800">
+    <html lang="es" className={`${inter.variable} font-sans`}>
+      <body className="min-h-screen bg-white text-neutral-900 antialiased selection:bg-brand-100 selection:text-brand-800">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

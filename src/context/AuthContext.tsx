@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, UserRole } from '@/types/auth';
 import { LoginFormData, SignupFormData } from '@/lib/validations/auth';
-import { DEMO_ACCOUNTS, ROLES } from '@/lib/constants/roles';
+import { DEMO_ACCOUNTS } from '@/lib/constants/roles';
 import { setCookie, getCookie, removeCookie } from '@/lib/auth/cookies';
 
 interface AuthContextType {
@@ -21,8 +21,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'no_pierdas_el_viaje_session';
-const REGISTERED_USERS_KEY = 'no_pierdas_el_viaje_users';
+const STORAGE_KEY = 'posesion_docente_sed_magdalena_session';
+const REGISTERED_USERS_KEY = 'posesion_docente_sed_magdalena_users';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         return {
           success: false,
-          error: 'No encontramos ninguna cuenta con este correo. Puedes usar una de las cuentas de prueba o registrarte.',
+          error: 'No encontramos ninguna cuenta con este correo institucional. Puedes usar una de las cuentas de prueba o registrarte.',
         };
       }
 
@@ -136,21 +136,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         return {
           success: false,
-          error: 'El documento de autorización firmado es estrictamente obligatorio para completar el registro.',
+          error: 'La autorización de notificación electrónica firmada vía Ciudadano Digital es estrictamente obligatoria para completar el registro.',
         };
       }
 
       const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
       const users: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
 
-      const exists = users.some(
+      const existsByEmail = users.some(
         (u) => u.email.toLowerCase() === data.email.toLowerCase().trim()
       );
-      if (exists) {
+      if (existsByEmail) {
         setIsLoading(false);
         return {
           success: false,
           error: 'Ya existe una cuenta registrada con este correo electrónico.',
+        };
+      }
+
+      const existsByDocument = users.some(
+        (u) => u.documentNumber && u.documentNumber.replace(/\D/g, '') === data.documentNumber.replace(/\D/g, '')
+      );
+      if (existsByDocument) {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: 'Ya existe un registro asociado a este número de cédula. Cada docente solo puede registrarse una vez.',
         };
       }
 
@@ -160,7 +171,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastName: data.lastName.trim(),
         email: data.email.toLowerCase().trim(),
         phoneNumber: data.phoneNumber?.trim(),
-        role: data.role || 'estudiante',
+        documentNumber: data.documentNumber?.trim(),
+        role: 'docente',
         document: data.signedDocument,
         createdAt: new Date().toISOString(),
       };

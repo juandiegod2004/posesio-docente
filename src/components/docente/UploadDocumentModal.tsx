@@ -124,7 +124,7 @@ export function UploadDocumentModal({
         {/* Modal Header */}
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
           <div className="space-y-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
               Ítem #{item.id} de 23
             </span>
             <h3 className="text-base sm:text-lg font-bold text-neutral-900 leading-snug">
@@ -164,7 +164,7 @@ export function UploadDocumentModal({
             <span className="text-neutral-600">{item.instructions}</span>
           </div>
           {item.specialNote && (
-            <div className="text-[11px] text-blue-900 bg-blue-50/80 p-2 rounded-md border border-blue-200">
+            <div className="text-[11px] text-brand-900 bg-brand-50/80 p-2 rounded-md border border-brand-200">
               {item.specialNote}
             </div>
           )}
@@ -195,19 +195,19 @@ export function UploadDocumentModal({
             onClick={() => fileInputRef.current?.click()}
             className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
               isDragging
-                ? 'border-blue-600 bg-blue-50/70 scale-[1.01]'
+                ? 'border-brand-600 bg-brand-50/70 scale-[1.01]'
                 : error
                 ? 'border-red-400 bg-red-50/40'
-                : 'border-neutral-300 hover:border-blue-500 hover:bg-neutral-50 bg-white'
+                : 'border-neutral-300 hover:border-brand-500 hover:bg-neutral-50 bg-white'
             }`}
           >
             <div className="flex flex-col items-center justify-center gap-2.5">
-              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
                 <Upload className="w-6 h-6" />
               </div>
               <div>
                 <p className="text-xs font-semibold text-neutral-800">
-                  <span className="text-blue-600 underline font-bold">Selecciona un archivo</span> o arrástralo aquí
+                  <span className="text-brand-600 underline font-bold">Selecciona un archivo</span> o arrástralo aquí
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
                   Archivos admitidos: PDF, JPG, PNG (hasta 15 MB)
@@ -216,9 +216,9 @@ export function UploadDocumentModal({
             </div>
           </div>
         ) : (
-          <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div className="border border-brand-200 bg-brand-50/50 rounded-xl p-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-brand-600 text-white flex items-center justify-center flex-shrink-0">
                 <FileText className="w-5 h-5" />
               </div>
               <div className="min-w-0">
@@ -249,7 +249,7 @@ export function UploadDocumentModal({
           <button
             type="button"
             onClick={handleLoadDemoFile}
-            className="text-[11px] text-blue-700 hover:text-blue-900 underline font-medium inline-flex items-center gap-1"
+            className="text-[11px] text-brand-700 hover:text-brand-900 underline font-medium inline-flex items-center gap-1"
           >
             <Download className="w-3 h-3" />
             Usar archivo simulado de prueba (.pdf)
@@ -278,7 +278,7 @@ export function UploadDocumentModal({
             type="button"
             onClick={handleSubmit}
             disabled={isUploading || !selectedFile}
-            className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+            className="px-5 py-2.5 bg-brand-700 hover:bg-brand-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
           >
             {isUploading ? (
               <>

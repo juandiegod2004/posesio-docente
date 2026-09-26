@@ -2,25 +2,84 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #101828;
+
+  /* Institutional palette — derived from the Secretaría de Educación del Magdalena seal */
+  --color-brand-50: #eef3fb;
+  --color-brand-100: #dbe6f6;
+  --color-brand-200: #b0c8e9;
+  --color-brand-300: #7fa4d9;
+  --color-brand-400: #4d7dc4;
+  --color-brand-500: #2c5ea8;
+  --color-brand-600: #1c4886;
+  --color-brand-700: #163a6d;
+  --color-brand-800: #112c55;
+  --color-brand-900: #0b1e3c;
+  --color-brand-950: #071429;
+
+  --color-gold-50: #fdf8ec;
+  --color-gold-100: #faedc9;
+  --color-gold-200: #f3d98d;
+  --color-gold-300: #e9c15e;
+  --color-gold-400: #dba934;
+  --color-gold-500: #c1901f;
+  --color-gold-600: #9c7217;
+  --color-gold-700: #7a5813;
+  --color-gold-800: #5c4212;
+  --color-gold-900: #493511;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand-50: var(--color-brand-50);
+  --color-brand-100: var(--color-brand-100);
+  --color-brand-200: var(--color-brand-200);
+  --color-brand-300: var(--color-brand-300);
+  --color-brand-400: var(--color-brand-400);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-800: var(--color-brand-800);
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-950: var(--color-brand-950);
+
+  --color-gold-50: var(--color-gold-50);
+  --color-gold-100: var(--color-gold-100);
+  --color-gold-200: var(--color-gold-200);
+  --color-gold-300: var(--color-gold-300);
+  --color-gold-400: var(--color-gold-400);
+  --color-gold-500: var(--color-gold-500);
+  --color-gold-600: var(--color-gold-600);
+  --color-gold-700: var(--color-gold-700);
+  --color-gold-800: var(--color-gold-800);
+  --color-gold-900: var(--color-gold-900);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.35s ease-out;
+}
+
+/* Subtle dotted texture used on institutional hero panels */
+.bg-brand-dots {
+  background-image: radial-gradient(currentColor 1px, transparent 1px);
+  background-size: 18px 18px;
 }

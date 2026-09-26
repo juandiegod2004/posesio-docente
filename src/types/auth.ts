@@ -1,4 +1,4 @@
-export type UserRole = 'administrador' | 'coordinador' | 'docente' | 'estudiante';
+export type UserRole = 'super_usuario' | 'administrativo' | 'validador' | 'docente';
 
 export interface UploadedDocument {
   name: string;
@@ -14,6 +14,7 @@ export interface User {
   lastName: string;
   email: string;
   phoneNumber?: string;
+  documentNumber?: string;
   role: UserRole;
   avatarUrl?: string;
   document?: UploadedDocument;

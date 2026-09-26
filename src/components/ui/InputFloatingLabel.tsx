@@ -36,7 +36,7 @@ export const InputFloatingLabel = forwardRef<HTMLInputElement, InputFloatingLabe
             className={`w-full h-12 px-4 rounded-md border text-sm text-neutral-800 placeholder-neutral-400 bg-white transition-all outline-none ${
               error
                 ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-200'
-                : 'border-neutral-400 hover:border-neutral-500 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-200'
+                : 'border-neutral-400 hover:border-neutral-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-200'
             } ${isPassword ? 'pr-12' : ''} ${className}`}
             {...props}
           />
@@ -45,7 +45,7 @@ export const InputFloatingLabel = forwardRef<HTMLInputElement, InputFloatingLabe
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 p-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 rounded transition-colors"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 p-1 focus:outline-none focus:ring-1 focus:ring-brand-400 rounded transition-colors"
               aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
             >
               {showPassword ? (

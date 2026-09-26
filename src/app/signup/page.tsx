@@ -1,8 +1,8 @@
 import { SignupForm } from '@/components/auth/SignupForm';
 
 export const metadata = {
-  title: 'Sign up | No Pierdas el Viaje - Secretaría de Educación',
-  description: 'Registro de usuarios con validación de documento de autorización firmado.',
+  title: 'Registro de docente | Posesión Docente - SED Magdalena',
+  description: 'Registro de docentes con validación de la autorización de notificación electrónica firmada vía Ciudadano Digital.',
 };
 
 export default function SignupPage() {
