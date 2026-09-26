@@ -176,36 +176,40 @@ export default function ValidadorDashboardPage() {
                       </span>
                     )}
                   </td>
-                  <td className="py-3.5 px-6 text-right space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => alert(`Visualizando documento: ${s.fileName}`)}
-                      className="p-1.5 text-neutral-500 hover:text-brand-700 hover:bg-neutral-100 rounded"
-                      title="Ver documento radicado"
-                    >
-                      <Eye className="w-4 h-4 inline" />
-                    </button>
-                    {s.status !== 'aprobado' && (
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(s.id)}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold transition-colors"
-                      >
-                        Aprobar
-                      </button>
-                    )}
-                    {s.status !== 'rechazado' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = window.prompt('Comentario de rechazo para el docente:');
-                          if (comment !== null) handleReject(s.id);
-                        }}
-                        className="px-2.5 py-1 bg-neutral-200 hover:bg-red-100 text-neutral-700 hover:text-red-700 rounded text-[11px] font-semibold transition-colors"
-                      >
-                        Rechazar
-                      </button>
-                    )}
+                  <td className="py-3.5 px-6">
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => alert(`Visualizando documento: ${s.fileName}`)}
+                          className="p-2 rounded-lg border border-neutral-200 text-neutral-500 hover:text-brand-700 hover:border-brand-300 hover:bg-neutral-50 transition-colors flex-shrink-0"
+                          title="Ver documento radicado"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {s.status !== 'aprobado' && (
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(s.id)}
+                            className="w-20 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold text-center transition-colors shadow-xs flex-shrink-0"
+                          >
+                            Aprobar
+                          </button>
+                        )}
+                      </div>
+                      {s.status !== 'rechazado' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const comment = window.prompt('Comentario de rechazo para el docente:');
+                            if (comment !== null) handleReject(s.id);
+                          }}
+                          className="w-20 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold text-center transition-colors flex-shrink-0"
+                        >
+                          Rechazar
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
