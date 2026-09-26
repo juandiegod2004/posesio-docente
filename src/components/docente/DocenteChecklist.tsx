@@ -478,7 +478,7 @@ export function DocenteChecklist() {
                         </div>
                       )}
                       <div className="text-[11px] text-neutral-500 pt-1 border-t border-neutral-200">
-                        <span>Formato requerido: PDF o imagen escaneada legible (hasta 15 MB)</span>
+                        <span>Formato requerido: PDF o imagen escaneada legible (hasta 2 MB)</span>
                       </div>
                     </div>
                   )}

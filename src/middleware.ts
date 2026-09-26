@@ -40,20 +40,21 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(unauthUrl);
     }
 
-    if (
-      pathname.startsWith('/dashboard/docente') &&
-      authRole !== 'docente' &&
-      authRole !== 'super_usuario' &&
-      authRole !== 'administrativo'
-    ) {
+    if (pathname.startsWith('/dashboard/docente') && authRole !== 'docente') {
       const unauthUrl = new URL('/unauthorized', request.url);
       unauthUrl.searchParams.set('required', 'docente');
       unauthUrl.searchParams.set('current', authRole || 'desconocido');
       return NextResponse.redirect(unauthUrl);
     }
 
-    // /dashboard/documentos shows a docente's own submitted files, so any
-    // authenticated role in the process can reach it (docente included).
+    // /dashboard/documentos shows a docente's own submitted files — only the
+    // docente role uploads documents, so only docente can reach it.
+    if (pathname.startsWith('/dashboard/documentos') && authRole !== 'docente') {
+      const unauthUrl = new URL('/unauthorized', request.url);
+      unauthUrl.searchParams.set('required', 'docente');
+      unauthUrl.searchParams.set('current', authRole || 'desconocido');
+      return NextResponse.redirect(unauthUrl);
+    }
   }
 
   return NextResponse.next();

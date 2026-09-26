@@ -56,8 +56,8 @@ export function UploadDocumentModal({
       setError('Formato no válido. Solo se admiten archivos PDF o imágenes (PNG, JPG).');
       return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-      setError('El archivo excede el tamaño máximo permitido de 15 MB.');
+    if (file.size > 2 * 1024 * 1024) {
+      setError('El archivo excede el tamaño máximo permitido de 2 MB.');
       return;
     }
     setSelectedFile(file);
@@ -210,7 +210,7 @@ export function UploadDocumentModal({
                   <span className="text-brand-600 underline font-bold">Selecciona un archivo</span> o arrástralo aquí
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Archivos admitidos: PDF, JPG, PNG (hasta 15 MB)
+                  Archivos admitidos: PDF, JPG, PNG (hasta 2 MB)
                 </p>
               </div>
             </div>

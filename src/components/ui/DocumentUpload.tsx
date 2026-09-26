@@ -23,9 +23,9 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
       return;
     }
 
-    // Validate size (10 MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('El archivo supera el tamaño máximo permitido de 10 MB.');
+    // Validate size (2 MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('El archivo supera el tamaño máximo permitido de 2 MB.');
       return;
     }
 
@@ -147,7 +147,7 @@ export function DocumentUpload({ value, onChange, error }: DocumentUploadProps) 
                 <span className="text-brand-600 font-semibold underline">Haz clic para adjuntar</span> o arrastra el archivo aquí
               </p>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                PDF, JPG o PNG firmado (máx. 10MB)
+                PDF, JPG o PNG firmado (máx. 2MB)
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 mt-1">

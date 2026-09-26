@@ -35,9 +35,6 @@ export function AuthShell({ children, contentClassName = 'max-w-md' }: AuthShell
             <h2 className="text-2xl sm:text-[26px] font-bold tracking-tight leading-tight">
               Portal de Posesión Docente
             </h2>
-            <p className="text-sm text-brand-100/90 max-w-xs mx-auto leading-relaxed">
-              Gestiona en línea los 23 documentos requeridos para tu nombramiento y posesión, con seguimiento en tiempo real de cada validación.
-            </p>
           </div>
         </div>
 

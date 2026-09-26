@@ -209,7 +209,6 @@ export const INITIAL_DOCENTE_CHECKLIST: ChecklistDocumentItem[] = [
     shortDescription: 'Documento de identidad ampliado por ambas caras',
     instructions:
       'Fotocopia ampliada al 150% de la Cédula de Ciudadanía vigente (amarilla con hologramas o digital), ambas caras visibles en una sola página, nítida y legible.',
-    specialNote: '⚠️ La ampliación debe ser exactamente al 150% y los números deben ser completamente legibles.',
     status: 'rechazado',
     fileName: 'cedula_100_tamano_real.pdf',
     fileSize: 340000,

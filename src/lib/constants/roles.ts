@@ -16,13 +16,7 @@ export const ROLES: Record<UserRole, RoleConfig> = {
     description: 'Control total del sistema: usuarios, roles, auditoría y métricas globales del proceso de posesión.',
     badgeColor: 'bg-brand-100 text-brand-900 border-brand-300',
     iconName: 'ShieldAlert',
-    allowedPaths: [
-      '/dashboard',
-      '/dashboard/admin',
-      '/dashboard/validador',
-      '/dashboard/docente',
-      '/dashboard/documentos',
-    ],
+    allowedPaths: ['/dashboard', '/dashboard/admin', '/dashboard/validador'],
   },
   administrativo: {
     id: 'administrativo',
@@ -30,13 +24,7 @@ export const ROLES: Record<UserRole, RoleConfig> = {
     description: 'Gestión operativa del proceso: seguimiento de docentes, soporte y generación de reportes.',
     badgeColor: 'bg-gold-100 text-gold-800 border-gold-300',
     iconName: 'Settings',
-    allowedPaths: [
-      '/dashboard',
-      '/dashboard/admin',
-      '/dashboard/validador',
-      '/dashboard/docente',
-      '/dashboard/documentos',
-    ],
+    allowedPaths: ['/dashboard', '/dashboard/admin', '/dashboard/validador'],
   },
   validador: {
     id: 'validador',
@@ -44,12 +32,7 @@ export const ROLES: Record<UserRole, RoleConfig> = {
     description: 'Revisión, aprobación y rechazo con comentario de los documentos radicados por los docentes.',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     iconName: 'FileCheck',
-    allowedPaths: [
-      '/dashboard',
-      '/dashboard/validador',
-      '/dashboard/docente',
-      '/dashboard/documentos',
-    ],
+    allowedPaths: ['/dashboard', '/dashboard/validador'],
   },
   docente: {
     id: 'docente',

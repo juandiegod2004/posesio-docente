@@ -58,7 +58,7 @@ export const signupSchema = z
     signedDocument: z
       .object({
         name: z.string().min(1, 'Nombre de archivo inválido'),
-        size: z.number().max(10 * 1024 * 1024, 'El archivo no debe exceder 10MB'),
+        size: z.number().max(2 * 1024 * 1024, 'El archivo no debe exceder 2MB'),
         type: z.string(),
         dataUrl: z.string().optional(),
         uploadedAt: z.string(),

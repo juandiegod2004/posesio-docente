@@ -33,7 +33,7 @@ export default function DashboardLayout({
   };
 
   const NAV_ITEMS = [
-    ...(role === 'docente' || role === 'super_usuario' || role === 'administrativo'
+    ...(role === 'docente'
       ? [
           { name: 'Checklist de Documentos', href: '/dashboard/docente', icon: FileCheck2 },
           { name: 'Mis Documentos Radicados', href: '/dashboard/documentos', icon: FolderOpen },
@@ -102,7 +102,7 @@ export default function DashboardLayout({
                 );
               })}
 
-              {(role === 'docente' || role === 'super_usuario' || role === 'administrativo') && (
+              {role === 'docente' && (
                 <button
                   type="button"
                   onClick={() => setGuideModalOpen(true)}
