@@ -13,6 +13,7 @@ export const InputFloatingLabel = forwardRef<HTMLInputElement, InputFloatingLabe
   ({ label, error, isPassword = false, type = 'text', id, className = '', ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
     const inputId = id || `input-${label.toLowerCase().replace(/\s+/g, '-')}`;
+    const errorId = `${inputId}-error`;
 
     const effectiveType = isPassword ? (showPassword ? 'text' : 'password') : type;
 
@@ -33,6 +34,12 @@ export const InputFloatingLabel = forwardRef<HTMLInputElement, InputFloatingLabe
             ref={ref}
             id={inputId}
             type={effectiveType}
+            aria-invalid={!!error}
+            aria-describedby={error ? errorId : undefined}
+            // Gestores de contraseñas (1Password, iCloud Keychain, etc.) marcan los
+            // campos de login con atributos propios antes de que React hidrate, lo
+            // que dispara un falso positivo de "hydration mismatch" en el input.
+            suppressHydrationWarning
             className={`w-full h-12 px-4 rounded-md border text-sm text-neutral-800 placeholder-neutral-400 bg-white transition-all outline-none ${
               error
                 ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-200'
@@ -58,7 +65,11 @@ export const InputFloatingLabel = forwardRef<HTMLInputElement, InputFloatingLabe
         </div>
 
         {error && (
-          <p className="mt-1 text-xs text-red-600 font-medium px-1 flex items-center gap-1 animate-fadeIn">
+          <p
+            id={errorId}
+            role="alert"
+            className="mt-1 text-xs text-red-600 font-medium px-1 flex items-center gap-1 animate-fadeIn"
+          >
             <span>•</span>
             <span>{error}</span>
           </p>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
@@ -11,11 +11,16 @@ import {
   FolderOpen,
   LogOut,
   HelpCircle,
-  Bell,
   ShieldAlert,
   FileCheck,
+  GraduationCap,
 } from 'lucide-react';
 import { WelcomeModal } from '@/components/docente/WelcomeModal';
+import { AuthorizationGateModal } from '@/components/docente/AuthorizationGateModal';
+import { InformacionAdicionalGateModal } from '@/components/docente/InformacionAdicionalGateModal';
+import { ChangePasswordGateModal } from '@/components/auth/ChangePasswordGateModal';
+import { DashboardNotice } from '@/components/dashboard/DashboardNotice';
+import { NotificationBell } from '@/components/dashboard/NotificationBell';
 
 export default function DashboardLayout({
   children,
@@ -33,16 +38,26 @@ export default function DashboardLayout({
   };
 
   const NAV_ITEMS = [
-    ...(role === 'docente'
+    ...(role === 'DOCENTE'
       ? [
           { name: 'Checklist de Documentos', href: '/dashboard/docente', icon: FileCheck2 },
           { name: 'Mis Documentos Radicados', href: '/dashboard/documentos', icon: FolderOpen },
         ]
       : []),
-    ...(role === 'validador' || role === 'super_usuario' || role === 'administrativo'
-      ? [{ name: 'Validación Documental', href: '/dashboard/validador', icon: FileCheck }]
+    ...(role === 'SAC' || role === 'TALENTO_HUMANO' || role === 'SUPER_USUARIO' || role === 'GESTOR_DOCUMENTAL'
+      ? [
+          {
+            // Gestor Documental no valida nada: solo consulta docentes con documentación ya aprobada.
+            name: role === 'GESTOR_DOCUMENTAL' ? 'Docentes Aprobados' : 'Validación Documental',
+            href: '/dashboard/validador',
+            icon: FileCheck,
+          },
+        ]
       : []),
-    ...(role === 'super_usuario' || role === 'administrativo'
+    ...(role === 'SUPER_USUARIO'
+      ? [{ name: 'Docentes', href: '/dashboard/docentes', icon: GraduationCap }]
+      : []),
+    ...(role === 'SUPER_USUARIO'
       ? [{ name: 'Administración', href: '/dashboard/admin', icon: ShieldAlert }]
       : []),
   ];
@@ -102,7 +117,7 @@ export default function DashboardLayout({
                 );
               })}
 
-              {role === 'docente' && (
+              {role === 'DOCENTE' && (
                 <button
                   type="button"
                   onClick={() => setGuideModalOpen(true)}
@@ -154,14 +169,7 @@ export default function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-3 ml-auto">
-            <button
-              type="button"
-              className="w-10 h-10 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-500 hover:text-brand-700 hover:border-brand-300 transition-colors relative"
-              title="Notificaciones"
-            >
-              <Bell className="w-4.5 h-4.5" />
-              <span className="absolute top-2 right-2.5 w-1.5 h-1.5 rounded-full bg-gold-500"></span>
-            </button>
+            <NotificationBell />
 
             <div className="flex items-center gap-2.5 pl-1">
               <div className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
@@ -208,6 +216,45 @@ export default function DashboardLayout({
       </div>
 
       <WelcomeModal isOpen={guideModalOpen} onClose={() => setGuideModalOpen(false)} />
+      <Suspense fallback={null}>
+        <DashboardNotice />
+      </Suspense>
+
+      {/* Cambio de contraseña obligatorio: aplica a cualquier rol y tiene prioridad sobre
+          cualquier otro bloqueo (sin clave propia no tiene sentido pedir nada más). */}
+      {user?.debeCambiarPassword ? (
+        <ChangePasswordGateModal />
+      ) : (
+        role === 'DOCENTE' && user?.docenteId && (
+          user.debeCompletarInformacionAdicional && !user.informacionAdicionalCompleta ? (
+            <InformacionAdicionalGateModal docenteId={user.docenteId} />
+          ) : user.authorizationDocumentRejected ? (
+            <AuthorizationGateModal
+              docenteId={user.docenteId}
+              tipoDocumentoId={user.authorizationDocumentRejected.tipoDocumentoId}
+              comentarioRechazo={user.authorizationDocumentRejected.comentario}
+              estado="rechazado"
+            />
+          ) : user.authorizationDocumentPendiente && user.tipoDocumentoAutorizacionId ? (
+            <AuthorizationGateModal
+              docenteId={user.docenteId}
+              tipoDocumentoId={user.tipoDocumentoAutorizacionId}
+              comentarioRechazo={null}
+              estado="en_revision"
+            />
+          ) : (
+            !user.registroCompletado &&
+            user.tipoDocumentoAutorizacionId && (
+              <AuthorizationGateModal
+                docenteId={user.docenteId}
+                tipoDocumentoId={user.tipoDocumentoAutorizacionId}
+                comentarioRechazo={null}
+                estado="pendiente_subir"
+              />
+            )
+          )
+        )
+      )}
     </div>
   );
 }

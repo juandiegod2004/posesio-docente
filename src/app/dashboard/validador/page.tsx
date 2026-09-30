@@ -1,84 +1,57 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { FileCheck, CheckCircle2, Eye, Search } from 'lucide-react';
+import { ROLES } from '@/lib/constants/roles';
+import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
+import { ApiError, DocenteResumen, fetchDocentes } from '@/lib/api';
+import { FileCheck, CheckCircle2, Search, Loader2, AlertCircle, ChevronRight, Clock, BellRing } from 'lucide-react';
 
-interface PendingSubmission {
-  id: string;
-  docenteName: string;
-  documentNumber: string;
-  itemNumber: number;
-  itemTitle: string;
-  fileName: string;
-  date: string;
-  status: 'aprobado' | 'pendiente' | 'rechazado';
+/** Documentos subidos que todavía no tienen una decisión (aprobado/rechazado). No es exacto si
+ * hay archivos eliminados por el sistema, pero es suficiente para priorizar la lista. */
+function pendientesPorRevisar(d: DocenteResumen): number {
+  return Math.max(d.documentosSubidos - d.documentosAprobados - d.documentosRechazados, 0);
 }
 
-const INITIAL_SUBMISSIONS: PendingSubmission[] = [
-  {
-    id: 'sub-1',
-    docenteName: 'Fernando Silva Pacheco',
-    documentNumber: '1.082.945.312',
-    itemNumber: 4,
-    itemTitle: 'Formulario de afiliación a CAJAMAG',
-    fileName: 'formulario_cajamag_v2025.pdf',
-    date: '2026-03-12',
-    status: 'rechazado',
-  },
-  {
-    id: 'sub-2',
-    docenteName: 'María Camila Rodríguez',
-    documentNumber: '1.075.221.884',
-    itemNumber: 12,
-    itemTitle: 'Experiencia laboral certificada',
-    fileName: 'certificados_experiencia_laboral.pdf',
-    date: '2026-03-14',
-    status: 'pendiente',
-  },
-  {
-    id: 'sub-3',
-    docenteName: 'Santiago Vargas Ospina',
-    documentNumber: '1.090.556.219',
-    itemNumber: 17,
-    itemTitle: 'Fotocopia de la cédula al 150%',
-    fileName: 'cedula_150_ampliada.pdf',
-    date: '2026-03-15',
-    status: 'pendiente',
-  },
-  {
-    id: 'sub-4',
-    docenteName: 'Valentina Martínez Peña',
-    documentNumber: '1.065.778.903',
-    itemNumber: 22,
-    itemTitle: 'Examen médico ocupacional de ingreso',
-    fileName: 'examen_medico_ocupacional.pdf',
-    date: '2026-03-16',
-    status: 'aprobado',
-  },
-];
-
 export default function ValidadorDashboardPage() {
-  const { role } = useAuth();
-  const [subs, setSubs] = useState<PendingSubmission[]>(INITIAL_SUBMISSIONS);
-  const [filter, setFilter] = useState<'todos' | 'pendiente' | 'aprobado' | 'rechazado'>('todos');
+  const { role, getAccessToken } = useAuth();
+  const canValidate = role ? ROLES[role].canValidateDocuments : false;
+  // Gestor Documental solo ve docentes con documentación ya aprobada (el backend ya filtra
+  // la lista); el copy de "revisar/aprobar/rechazar" de las demás roles no le aplica.
+  const esGestorDocumental = role === 'GESTOR_DOCUMENTAL';
+
+  const [docentes, setDocentes] = useState<DocenteResumen[]>([]);
   const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleApprove = (id: string) => {
-    setSubs((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'aprobado' } : s)));
-  };
+  useEffect(() => {
+    (async () => {
+      const token = await getAccessToken();
+      if (!token) return;
+      setIsLoading(true);
+      setError(null);
+      try {
+        setDocentes(await fetchDocentes(token));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'No se pudo cargar la lista de docentes.');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [getAccessToken]);
 
-  const handleReject = (id: string) => {
-    setSubs((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'rechazado' } : s)));
-  };
-
-  const filteredSubs = subs
-    .filter((s) => filter === 'todos' || s.status === filter)
-    .filter(
-      (s) =>
-        s.docenteName.toLowerCase().includes(search.toLowerCase()) ||
-        s.itemTitle.toLowerCase().includes(search.toLowerCase())
-    );
+  const term = search.trim().toLowerCase();
+  const filtered = docentes
+    .filter((d) => {
+      if (!term) return true;
+      return (
+        `${d.usuario.nombres} ${d.usuario.apellidos}`.toLowerCase().includes(term) ||
+        d.usuario.cedula.includes(term)
+      );
+    })
+    .sort((a, b) => pendientesPorRevisar(b) - pendientesPorRevisar(a));
 
   return (
     <div className="space-y-6">
@@ -90,141 +63,135 @@ export default function ValidadorDashboardPage() {
               <FileCheck className="w-5 h-5" />
             </span>
             <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">
-              Bandeja de Validación Documental
+              {esGestorDocumental ? 'Docentes con Documentación Aprobada' : 'Bandeja de Validación Documental'}
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-            Revisa, aprueba o rechaza con comentario los soportes radicados por los docentes para su posesión.
+            {esGestorDocumental
+              ? 'Consulta el perfil y los documentos de docentes que ya completaron su proceso de posesión.'
+              : 'Selecciona un docente para revisar, aprobar o rechazar con comentario sus documentos radicados.'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar docente o documento..."
-              className="pl-7 pr-3 py-1.5 rounded-lg border border-neutral-300 text-xs bg-white focus:outline-none focus:border-brand-600"
-            />
-          </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="border border-neutral-300 rounded-lg px-3 py-1.5 text-xs font-semibold bg-white focus:outline-none focus:border-brand-600"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="pendiente">Solo pendientes</option>
-            <option value="aprobado">Aprobados</option>
-            <option value="rechazado">Rechazados</option>
-          </select>
+        <div className="relative w-full sm:w-72">
+          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o cédula..."
+            className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-neutral-300 text-xs bg-white focus:outline-none focus:border-brand-600"
+          />
         </div>
       </div>
 
-      {/* Verification Queue Table */}
+      {error && (
+        <div className="p-3.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
+          <span>{error}</span>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-neutral-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
           <h2 className="text-sm font-bold text-neutral-800">
-            Documentos del Checklist de Posesión Docente (23 ítems)
+            {esGestorDocumental ? 'Docentes con Proceso Culminado' : 'Docentes en Proceso de Posesión'}
           </h2>
           <span className="text-xs text-neutral-500">
-            Total en lista: {filteredSubs.length}
+            {isLoading ? 'Cargando...' : `Total: ${filtered.length}`}
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
-              <tr>
-                <th className="py-3 px-6 font-semibold">Docente</th>
-                <th className="py-3 px-6 font-semibold">Cédula</th>
-                <th className="py-3 px-6 font-semibold">Ítem del checklist</th>
-                <th className="py-3 px-6 font-semibold">Archivo radicado</th>
-                <th className="py-3 px-6 font-semibold">Fecha</th>
-                <th className="py-3 px-6 font-semibold">Estado</th>
-                <th className="py-3 px-6 font-semibold text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filteredSubs.map((s) => (
-                <tr key={s.id} className="hover:bg-neutral-50/80 transition-colors">
-                  <td className="py-3.5 px-6 font-semibold text-neutral-900">{s.docenteName}</td>
-                  <td className="py-3.5 px-6 text-neutral-600">{s.documentNumber}</td>
-                  <td className="py-3.5 px-6 text-neutral-700">
-                    <span className="text-brand-700 font-bold">#{s.itemNumber}</span>{' '}
-                    {s.itemTitle}
-                  </td>
-                  <td className="py-3.5 px-6 text-brand-600 truncate max-w-[180px]">
-                    {s.fileName}
-                  </td>
-                  <td className="py-3.5 px-6 text-neutral-500">{s.date}</td>
-                  <td className="py-3.5 px-6">
-                    {s.status === 'aprobado' && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        Aprobado
+        {isLoading ? (
+          <div className="py-10 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-8 text-center text-neutral-500 text-xs px-6">
+            {docentes.length === 0
+              ? 'Todavía no hay docentes registrados en el sistema.'
+              : 'No se encontraron docentes con ese nombre o cédula.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-100">
+            {filtered.map((d) => {
+              const pendientes = pendientesPorRevisar(d);
+              return (
+                <Link
+                  key={d.id}
+                  href={`/dashboard/validador/${d.id}`}
+                  className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-neutral-50/80 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-neutral-900 text-sm truncate">
+                        {d.usuario.nombres} {d.usuario.apellidos}
                       </span>
-                    )}
-                    {s.status === 'pendiente' && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                        Por verificar
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-neutral-100 text-neutral-600 border-neutral-300 whitespace-nowrap">
+                        {d.tipoPosesion === 'ADMINISTRATIVO' ? 'Administrativo' : 'Docente'}
                       </span>
-                    )}
-                    {s.status === 'rechazado' && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
-                        Rechazado
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-6">
-                    <div className="flex flex-col items-end gap-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => alert(`Visualizando documento: ${s.fileName}`)}
-                          className="p-2 rounded-lg border border-neutral-200 text-neutral-500 hover:text-brand-700 hover:border-brand-300 hover:bg-neutral-50 transition-colors flex-shrink-0"
-                          title="Ver documento radicado"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {s.status !== 'aprobado' && (
-                          <button
-                            type="button"
-                            onClick={() => handleApprove(s.id)}
-                            className="w-20 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold text-center transition-colors shadow-xs flex-shrink-0"
-                          >
-                            Aprobar
-                          </button>
-                        )}
-                      </div>
-                      {s.status !== 'rechazado' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const comment = window.prompt('Comentario de rechazo para el docente:');
-                            if (comment !== null) handleReject(s.id);
-                          }}
-                          className="w-20 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold text-center transition-colors flex-shrink-0"
-                        >
-                          Rechazar
-                        </button>
-                      )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <div className="text-neutral-500 text-[11px]">
+                      C.C. {d.usuario.cedula} · {d.documentosAprobados}/{TOTAL_CHECKLIST_ITEMS} aprobados
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {d.documentacionFinalizada && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-violet-100 text-violet-800 border-violet-200 whitespace-nowrap inline-flex items-center gap-1">
+                        <BellRing className="w-3 h-3" />
+                        Lista para revisión
+                      </span>
+                    )}
+                    {d.usuario.debeCambiarPassword && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-100 text-amber-800 border-amber-200 whitespace-nowrap">
+                        Pendiente cambio de clave
+                      </span>
+                    )}
+                    {d.documentosSubidos === 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-neutral-100 text-neutral-600 border-neutral-300 whitespace-nowrap">
+                        Sin documentos aún
+                      </span>
+                    ) : pendientes > 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-100 text-amber-800 border-amber-200 whitespace-nowrap inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {pendientes} por revisar
+                      </span>
+                    ) : d.documentosAprobados === TOTAL_CHECKLIST_ITEMS ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-100 text-emerald-800 border-emerald-200 whitespace-nowrap inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Completo
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-neutral-100 text-neutral-600 border-neutral-300 whitespace-nowrap">
+                        Al día
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-neutral-400" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="bg-brand-50 border border-brand-200/80 rounded-xl p-4 text-xs text-brand-900 flex items-start gap-2.5">
         <CheckCircle2 className="w-4 h-4 text-brand-600 flex-shrink-0 mt-0.5" />
         <span>
-          Tu rol actual es <strong className="capitalize">{role?.replace('_', ' ')}</strong>. Toda aprobación o
-          rechazo queda registrado con usuario y fecha para trazabilidad ante la Secretaría.
+          Tu rol actual es <strong>{role ? ROLES[role].label : ''}</strong>.{' '}
+          {canValidate
+            ? role === 'SAC'
+              ? 'Solo puedes aprobar o rechazar la autorización de notificación electrónica; el resto del checklist lo valida Talento Humano. Toda decisión queda registrada con usuario y fecha.'
+              : role === 'TALENTO_HUMANO'
+              ? 'Puedes aprobar o rechazar los 24 documentos del checklist, excepto la autorización de notificación electrónica (la valida SAC). Toda decisión queda registrada con usuario y fecha.'
+              : 'Toda aprobación o rechazo queda registrado con usuario y fecha para trazabilidad ante la Secretaría.'
+            : esGestorDocumental
+            ? 'Tu rol tiene acceso de solo consulta y únicamente a docentes con toda su documentación ya aprobada; mientras un docente esté en proceso no aparece aquí.'
+            : 'Tu rol tiene acceso de solo consulta; la aprobación o rechazo de documentos está reservada a SAC, Talento Humano y Super Usuario.'}
         </span>
       </div>
+
     </div>
   );
 }

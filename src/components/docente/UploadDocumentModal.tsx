@@ -2,41 +2,42 @@
 
 import React, { useState, useRef } from 'react';
 import { ChecklistDocumentItem } from '@/types/docente-checklist';
+import { useAuth } from '@/context/AuthContext';
+import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
+import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
+import { ApiError, subirDocumento } from '@/lib/api';
 import {
   Upload,
   FileText,
-  FileCheck,
   AlertCircle,
   X,
-  CheckCircle2,
-  Download,
   Loader2,
   Trash2,
 } from 'lucide-react';
 
 interface UploadDocumentModalProps {
   item: ChecklistDocumentItem | null;
+  docenteId: string | undefined;
   isOpen: boolean;
   onClose: () => void;
-  onUploadSuccess: (
-    item: ChecklistDocumentItem,
-    fileInfo: { name: string; size: number; fileType?: string; dataUrl?: string }
-  ) => void;
+  onUploadSuccess: (item: ChecklistDocumentItem, fileInfo: { name: string; size: number }) => void;
 }
 
 export function UploadDocumentModal({
   item,
+  docenteId,
   isOpen,
   onClose,
   onUploadSuccess,
 }: UploadDocumentModalProps) {
+  const { getAccessToken } = useAuth();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileDataUrl, setFileDataUrl] = useState<string | undefined>(undefined);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useLockBodyScroll(isOpen && !!item);
   if (!isOpen || !item) return null;
 
   const isResubmission =
@@ -46,14 +47,8 @@ export function UploadDocumentModal({
 
   const handleFileProcess = (file: File) => {
     setError(null);
-    const validExtensions = [
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
-    ];
-    if (!validExtensions.includes(file.type)) {
-      setError('Formato no válido. Solo se admiten archivos PDF o imágenes (PNG, JPG).');
+    if (file.type !== 'application/pdf') {
+      setError('Formato no válido. Solo se admiten archivos PDF.');
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -61,12 +56,15 @@ export function UploadDocumentModal({
       return;
     }
     setSelectedFile(file);
+  };
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setFileDataUrl(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    // Sin esto, el <input> nativo conserva el archivo seleccionado y no dispara
+    // 'change' si el usuario vuelve a elegir el mismo archivo justo después.
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -77,45 +75,34 @@ export function UploadDocumentModal({
     }
   };
 
-  const handleLoadDemoFile = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const cleanTitle = item.title
-      .substring(0, 20)
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]/g, '_');
-    const fileName = `soporte_item_${item.id}_${cleanTitle}_firmado.pdf`;
-
-    const mockFile = new File(['%PDF-1.4 Mock document for Magdalena'], fileName, {
-      type: 'application/pdf',
-    });
-    setSelectedFile(mockFile);
-    setFileDataUrl('data:application/pdf;base64,JVBERi0xLjQKJ...');
-    setError(null);
-  };
-
   const handleSubmit = async () => {
     if (!selectedFile) {
       setError('Por favor selecciona o arrastra un archivo antes de continuar.');
       return;
     }
+    if (!docenteId || !item.tipoDocumentoId) {
+      setError('No se pudo identificar el documento. Recarga la página e intenta de nuevo.');
+      return;
+    }
 
+    setError(null);
     setIsUploading(true);
-    // Simulate upload delay for realistic UX
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      await subirDocumento(await getAccessToken() || '', {
+        docenteId,
+        tipoDocumentoId: item.tipoDocumentoId,
+        file: selectedFile,
+        fileName: selectedFile.name,
+      });
 
-    onUploadSuccess(item, {
-      name: selectedFile.name,
-      size: selectedFile.size,
-      fileType: selectedFile.type,
-      dataUrl: fileDataUrl,
-    });
-
-    setIsUploading(false);
-    setSelectedFile(null);
-    setFileDataUrl(undefined);
-    onClose();
+      onUploadSuccess(item, { name: selectedFile.name, size: selectedFile.size });
+      setSelectedFile(null);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo subir el documento. Intenta de nuevo.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -125,7 +112,7 @@ export function UploadDocumentModal({
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
           <div className="space-y-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
-              Ítem #{item.id} de 23
+              Ítem #{item.id} de {TOTAL_CHECKLIST_ITEMS}
             </span>
             <h3 className="text-base sm:text-lg font-bold text-neutral-900 leading-snug">
               {isResubmission ? 'Resubir soporte documental' : 'Subir documento de posesión'}
@@ -146,7 +133,7 @@ export function UploadDocumentModal({
           <div className="bg-red-50 border-l-4 border-red-500 rounded-r-lg p-3.5 space-y-1 text-xs">
             <div className="flex items-center gap-1.5 font-bold text-red-900">
               <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-              <span>Motivo de rechazo por el validador:</span>
+              <span>{item.archivoEliminado ? 'Aviso del sistema:' : 'Motivo de rechazo por el validador:'}</span>
             </div>
             <p className="text-red-800 leading-relaxed pl-5 font-normal">
               “{item.validatorComment}”
@@ -174,7 +161,7 @@ export function UploadDocumentModal({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+          accept=".pdf,application/pdf"
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
               handleFileProcess(e.target.files[0]);
@@ -210,7 +197,7 @@ export function UploadDocumentModal({
                   <span className="text-brand-600 underline font-bold">Selecciona un archivo</span> o arrástralo aquí
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Archivos admitidos: PDF, JPG, PNG (hasta 2 MB)
+                  Solo se admiten archivos PDF (hasta 2 MB)
                 </p>
               </div>
             </div>
@@ -232,10 +219,7 @@ export function UploadDocumentModal({
             </div>
             <button
               type="button"
-              onClick={() => {
-                setSelectedFile(null);
-                setFileDataUrl(undefined);
-              }}
+              onClick={handleRemoveFile}
               className="p-1.5 text-neutral-400 hover:text-red-600 rounded-md transition-colors"
               title="Cambiar archivo"
             >
@@ -244,16 +228,7 @@ export function UploadDocumentModal({
           </div>
         )}
 
-        {/* Quick Demo File Helper */}
-        <div className="flex items-center justify-between text-xs">
-          <button
-            type="button"
-            onClick={handleLoadDemoFile}
-            className="text-[11px] text-brand-700 hover:text-brand-900 underline font-medium inline-flex items-center gap-1"
-          >
-            <Download className="w-3 h-3" />
-            Usar archivo simulado de prueba (.pdf)
-          </button>
+        <div className="flex items-center justify-end text-xs">
           <span className="text-[11px] text-neutral-400">UN solo archivo por ítem</span>
         </div>
 

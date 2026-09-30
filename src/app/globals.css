@@ -23,7 +23,9 @@
   --color-gold-300: #e9c15e;
   --color-gold-400: #dba934;
   --color-gold-500: #c1901f;
-  --color-gold-600: #9c7217;
+  /* #9c7217 medía 4.35:1 sobre blanco (falla WCAG AA de 4.5:1 para texto normal por poco);
+     oscurecido a #946c14 (~4.76:1) sin cambiar el tono percibido. */
+  --color-gold-600: #946c14;
   --color-gold-700: #7a5813;
   --color-gold-800: #5c4212;
   --color-gold-900: #493511;

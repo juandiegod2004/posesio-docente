@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ChecklistDocumentItem } from '@/types/docente-checklist';
+import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
 import { CheckCircle2, Clock, FileCheck, ArrowRight } from 'lucide-react';
 
 interface UploadConfirmModalProps {
@@ -11,6 +12,7 @@ interface UploadConfirmModalProps {
 }
 
 export function UploadConfirmModal({ item, isOpen, onClose }: UploadConfirmModalProps) {
+  useLockBodyScroll(isOpen && !!item);
   if (!isOpen || !item) return null;
 
   return (

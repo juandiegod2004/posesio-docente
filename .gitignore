@@ -44,3 +44,7 @@ next-env.d.ts
 # backend (Express + Prisma)
 backend/node_modules
 backend/dist
+
+# clon local del repo oficial de supabase/supabase (solo para sacar el docker-compose.yml
+# de self-hosting, no es parte de este proyecto)
+/supabase-deploy

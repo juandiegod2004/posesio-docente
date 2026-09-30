@@ -17,7 +17,7 @@ export function LogoSeal({ size = 460, priority = true, className = '' }: LogoSe
     >
       <Image
         src="/logo-secretaria-educacion.png"
-        alt="Secretaría de Educación - No Pierdas el Viaje"
+        alt="Secretaría de Educación del Magdalena"
         width={size}
         height={size}
         priority={priority}

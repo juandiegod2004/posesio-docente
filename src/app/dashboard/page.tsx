@@ -3,13 +3,7 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-
-const DEFAULT_ROUTE_BY_ROLE: Record<string, string> = {
-  docente: '/dashboard/docente',
-  validador: '/dashboard/validador',
-  administrativo: '/dashboard/admin',
-  super_usuario: '/dashboard/admin',
-};
+import { ROLES } from '@/lib/constants/roles';
 
 export default function DashboardRootPage() {
   const router = useRouter();
@@ -17,7 +11,7 @@ export default function DashboardRootPage() {
 
   useEffect(() => {
     if (isLoading) return;
-    router.replace(role ? DEFAULT_ROUTE_BY_ROLE[role] || '/dashboard/docente' : '/login');
+    router.replace(role ? ROLES[role].homePath : '/login');
   }, [role, isLoading, router]);
 
   return (

@@ -24,8 +24,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${inter.variable} font-sans`}>
-      <body className="min-h-screen bg-white text-neutral-900 antialiased selection:bg-brand-100 selection:text-brand-800">
+    // suppressHydrationWarning: extensiones y gestores de contraseñas del navegador
+    // (1Password, iCloud Keychain, etc.) agregan atributos al <html> antes de hidratar.
+    <html lang="es" className={`${inter.variable} font-sans`} suppressHydrationWarning>
+      <body
+        className="min-h-screen bg-white text-neutral-900 antialiased selection:bg-brand-100 selection:text-brand-800"
+        suppressHydrationWarning
+      >
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

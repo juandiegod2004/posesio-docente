@@ -3,64 +3,53 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { signupSchema, SignupFormData } from '@/lib/validations/auth';
+import { signupSchema, SignupFormData, filtrarNombrePersona, filtrarSoloDigitos } from '@/lib/validations/auth';
 import { useAuth } from '@/context/AuthContext';
 import { InputFloatingLabel } from '@/components/ui/InputFloatingLabel';
-import { DocumentUpload } from '@/components/ui/DocumentUpload';
+import { SelectFloatingLabel } from '@/components/ui/SelectFloatingLabel';
 import { AuthShell } from '@/components/auth/AuthShell';
-import { Loader2, AlertCircle, ShieldAlert, CheckCircle } from 'lucide-react';
+import { TIPOS_DOCUMENTO_IDENTIDAD } from '@/lib/constants/informacion-adicional';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 export function SignupForm() {
   const router = useRouter();
   const { signup } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     control,
-    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SignupFormData>({
-    resolver: zodResolver(signupSchema) as any,
+    resolver: zodResolver(signupSchema),
     defaultValues: {
+      tipoPosesion: 'DOCENTE',
       firstName: '',
       lastName: '',
+      tipoDocumento: 'CEDULA_CIUDADANIA',
       documentNumber: '',
       email: '',
       phoneNumber: '',
       password: '',
       confirmPassword: '',
-      signedDocument: null,
       termsAccepted: false,
     },
     mode: 'onChange',
   });
 
-  const signedDoc = watch('signedDocument');
-  const termsAccepted = watch('termsAccepted');
-  const isDocumentMissing = !signedDoc;
-  const isButtonBlocked = isDocumentMissing || !termsAccepted;
+  const termsAccepted = useWatch({ control, name: 'termsAccepted' });
+  const tipoPosesion = useWatch({ control, name: 'tipoPosesion' });
 
   const onSubmit = async (data: SignupFormData) => {
     setServerError(null);
-    setSuccessMessage(null);
-
-    if (isDocumentMissing) {
-      setServerError('No se puede crear la cuenta: la autorización de notificación electrónica firmada vía Ciudadano Digital es estrictamente obligatoria.');
-      return;
-    }
 
     const result = await signup(data);
     if (result.success) {
-      setSuccessMessage('¡Cuenta creada exitosamente! Redirigiendo a tu checklist de documentos...');
-      setTimeout(() => {
-        router.push('/dashboard');
-        router.refresh();
-      }, 1000);
+      router.push('/login?registered=1');
     } else {
       setServerError(result.error || 'Ocurrió un error al procesar el registro.');
     }
@@ -71,10 +60,10 @@ export function SignupForm() {
       <div className="space-y-6">
         <div className="space-y-1.5">
           <h1 className="text-3xl md:text-[34px] font-bold text-neutral-900 tracking-tight">
-            Regístrate como docente
+            Regístrate para tu posesión
           </h1>
           <p className="text-xs md:text-sm text-neutral-500 font-normal">
-            Completa tus datos y adjunta tu autorización de notificación electrónica firmada vía Ciudadano Digital para habilitar tu checklist de posesión.
+            Completa tus datos para crear tu cuenta. Después de iniciar sesión podrás subir la autorización de notificación electrónica y los demás documentos de tu checklist de posesión.
           </p>
         </div>
 
@@ -85,55 +74,97 @@ export function SignupForm() {
           </div>
         )}
 
-        {successMessage && (
-          <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2.5 animate-fadeIn">
-            <CheckCircle className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-            <span>{successMessage}</span>
+        {/* suppressHydrationWarning: gestores de contraseñas marcan el <form> antes de hidratar. */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" suppressHydrationWarning>
+          {/* Tipo de posesión */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-semibold text-neutral-700">¿Te vas a posesionar como Docente o como personal Administrativo?</span>
+            <div className="grid grid-cols-2 gap-3">
+              {(['DOCENTE', 'ADMINISTRATIVO'] as const).map((opcion) => (
+                <button
+                  key={opcion}
+                  type="button"
+                  onClick={() => setValue('tipoPosesion', opcion, { shouldValidate: true })}
+                  className={`h-11 rounded-md text-sm font-semibold border transition-colors ${
+                    tipoPosesion === opcion
+                      ? 'bg-brand-700 border-brand-700 text-white'
+                      : 'bg-white border-neutral-300 text-neutral-600 hover:border-brand-400'
+                  }`}
+                >
+                  {opcion === 'DOCENTE' ? 'Docente' : 'Administrativo'}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-4">
           {/* Row 1: First Name & Last Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <InputFloatingLabel
               label="Nombres"
               placeholder="Juan"
               autoComplete="given-name"
+              maxLength={50}
               error={errors.firstName?.message}
-              {...register('firstName')}
+              {...register('firstName', {
+                onChange: (e) => {
+                  e.target.value = filtrarNombrePersona(e.target.value);
+                },
+              })}
             />
             <InputFloatingLabel
               label="Apellidos"
               placeholder="Pérez Rodríguez"
               autoComplete="family-name"
+              maxLength={50}
               error={errors.lastName?.message}
-              {...register('lastName')}
+              {...register('lastName', {
+                onChange: (e) => {
+                  e.target.value = filtrarNombrePersona(e.target.value);
+                },
+              })}
             />
           </div>
 
-          {/* Row 2: Cédula & Phone */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Row 2: Tipo de documento, Cédula & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <SelectFloatingLabel
+              label="Tipo de documento"
+              placeholder="Selecciona..."
+              options={TIPOS_DOCUMENTO_IDENTIDAD}
+              error={errors.tipoDocumento?.message}
+              {...register('tipoDocumento')}
+            />
             <InputFloatingLabel
               label="Número de cédula"
-              placeholder="1.082.945.312"
+              placeholder="1082945312"
               autoComplete="off"
+              inputMode="numeric"
               error={errors.documentNumber?.message}
-              {...register('documentNumber')}
+              {...register('documentNumber', {
+                onChange: (e) => {
+                  e.target.value = filtrarSoloDigitos(e.target.value, 10);
+                },
+              })}
             />
             <InputFloatingLabel
               label="Teléfono"
-              placeholder="+57 300 123 4567"
+              placeholder="3001234567"
               type="tel"
+              inputMode="numeric"
               autoComplete="tel"
               error={errors.phoneNumber?.message}
-              {...register('phoneNumber')}
+              {...register('phoneNumber', {
+                onChange: (e) => {
+                  e.target.value = filtrarSoloDigitos(e.target.value, 10);
+                },
+              })}
             />
           </div>
 
           {/* Row 3: Email */}
           <InputFloatingLabel
-            label="Correo institucional"
-            placeholder="nombre.apellido@sedmagdalena.gov.co"
+            label="Correo electrónico"
+            placeholder="tu@correo.com"
             type="email"
             autoComplete="email"
             error={errors.email?.message}
@@ -160,21 +191,6 @@ export function SignupForm() {
             />
           </div>
 
-          {/* Autorización de notificación electrónica firmada (BLOQUEANTE) */}
-          <div className="pt-1">
-            <Controller
-              name="signedDocument"
-              control={control}
-              render={({ field, fieldState }) => (
-                <DocumentUpload
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={fieldState.error?.message}
-                />
-              )}
-            />
-          </div>
-
           {/* Terms and Privacy Policies Checkbox */}
           <div className="flex items-start gap-2 pt-1 text-xs select-none">
             <input
@@ -191,7 +207,7 @@ export function SignupForm() {
                   e.preventDefault();
                   alert('Términos y condiciones del proceso de posesión docente - Secretaría de Educación del Magdalena.');
                 }}
-                className="text-gold-600 hover:text-gold-700 font-medium"
+                className="text-gold-600 hover:text-gold-700 font-medium rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2"
               >
                 Términos
               </a>{' '}
@@ -202,7 +218,7 @@ export function SignupForm() {
                   e.preventDefault();
                   alert('Políticas de privacidad y protección de datos personales.');
                 }}
-                className="text-gold-600 hover:text-gold-700 font-medium"
+                className="text-gold-600 hover:text-gold-700 font-medium rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2"
               >
                 Políticas de Privacidad
               </a>
@@ -214,28 +230,14 @@ export function SignupForm() {
             </p>
           )}
 
-          {isDocumentMissing && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md p-2.5 text-xs flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <span>
-                <strong>Registro bloqueado:</strong> adjunta arriba tu autorización de notificación electrónica firmada vía Ciudadano Digital para continuar.
-              </span>
-            </div>
-          )}
-
           <button
             type="submit"
-            disabled={isButtonBlocked || isSubmitting}
+            disabled={!termsAccepted || isSubmitting}
             className={`w-full h-12 font-semibold rounded-md shadow-xs transition-all flex items-center justify-center gap-2 text-sm select-none ${
-              isButtonBlocked
+              !termsAccepted
                 ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed border border-neutral-300'
                 : 'bg-brand-700 hover:bg-brand-800 active:bg-brand-900 text-white focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2'
             }`}
-            title={
-              isDocumentMissing
-                ? 'Debes adjuntar la autorización firmada para continuar'
-                : 'Crear cuenta'
-            }
           >
             {isSubmitting ? (
               <>
@@ -251,7 +253,7 @@ export function SignupForm() {
             <span>¿Ya tienes una cuenta? </span>
             <Link
               href="/login"
-              className="text-gold-600 hover:text-gold-700 font-semibold transition-colors ml-1"
+              className="text-gold-600 hover:text-gold-700 font-semibold transition-colors ml-1 rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2"
             >
               Inicia sesión
             </Link>

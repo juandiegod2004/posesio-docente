@@ -1,219 +1,194 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserRole } from '@/types/auth';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { User } from '@/types/auth';
 import { LoginFormData, SignupFormData } from '@/lib/validations/auth';
-import { DEMO_ACCOUNTS } from '@/lib/constants/roles';
-import { setCookie, getCookie, removeCookie } from '@/lib/auth/cookies';
+import { createClient } from '@/lib/supabase/client';
+import { ApiError, BackendUsuario, cambiarPassword as cambiarPasswordApi, fetchMe, registrarDocente } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
-  role: UserRole | null;
+  role: User['role'] | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (data: LoginFormData) => Promise<{ success: boolean; error?: string }>;
-  loginWithDemo: (email: string) => Promise<boolean>;
+  login: (data: LoginFormData, captchaToken?: string) => Promise<{ success: boolean; error?: string }>;
   signup: (data: SignupFormData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  switchRole: (newRole: UserRole) => void;
-  resetPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  /** Cambia la contraseña del usuario autenticado (obligatorio si debeCambiarPassword=true, o voluntario). */
+  cambiarPassword: (passwordNueva: string) => Promise<{ success: boolean; error?: string }>;
+  /** Token del usuario autenticado, para llamar al backend directamente desde una página. */
+  getAccessToken: () => Promise<string | null>;
+  /** Vuelve a pedir /api/auth/me y actualiza el usuario en memoria (ej. tras subir un documento). */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'posesion_docente_sed_magdalena_session';
-const REGISTERED_USERS_KEY = 'posesion_docente_sed_magdalena_users';
+function mapBackendUsuario(usuario: BackendUsuario): User {
+  return {
+    id: usuario.id,
+    firstName: usuario.nombres,
+    lastName: usuario.apellidos,
+    email: usuario.email,
+    phoneNumber: usuario.telefono ?? undefined,
+    documentNumber: usuario.cedula,
+    role: usuario.rol,
+    createdAt: usuario.createdAt,
+    debeCambiarPassword: usuario.debeCambiarPassword,
+    docenteId: usuario.docente?.id,
+    registroCompletado: usuario.docente?.registroCompletado,
+    tipoPosesion: usuario.docente?.tipoPosesion,
+    documentacionFinalizada: usuario.docente?.documentacionFinalizada,
+    debeCompletarInformacionAdicional: usuario.docente?.debeCompletarInformacionAdicional,
+    informacionAdicionalCompleta: usuario.docente?.informacionAdicionalCompleta,
+    tipoDocumentoAutorizacionId: usuario.docente?.tipoDocumentoAutorizacionId ?? null,
+    authorizationDocumentRejected: usuario.docente?.documentoAutorizacionRechazado ?? null,
+    authorizationDocumentPendiente: usuario.docente?.documentoAutorizacionPendiente,
+  };
+}
+
+function mapAuthError(message: string): string {
+  if (/invalid login credentials/i.test(message)) {
+    return 'Correo o contraseña incorrectos.';
+  }
+  if (/user is banned|user_banned/i.test(message)) {
+    return 'Tu cuenta ha sido desactivada. Comunícate con el área de Servicios Informáticos para más información.';
+  }
+  return message;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const supabaseRef = useRef(createClient());
 
-  // Initialize from storage & cookies
   useEffect(() => {
-    try {
-      // Check stored custom users or seed with DEMO_ACCOUNTS
-      const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
-      if (!storedUsersRaw) {
-        const initialUsers: User[] = DEMO_ACCOUNTS.map((acc) => ({
-          ...acc,
-          createdAt: new Date().toISOString(),
-        }));
-        localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(initialUsers));
-      }
+    const supabase = supabaseRef.current;
 
-      // Check active session
-      const storedSession = localStorage.getItem(STORAGE_KEY);
-      const cookieRole = getCookie('auth_role');
-
-      if (storedSession) {
-        const parsed = JSON.parse(storedSession) as User;
-        setUser(parsed);
-        setCookie('auth_token', parsed.id);
-        setCookie('auth_role', parsed.role);
-      } else if (cookieRole) {
-        // Fallback to demo account matching cookie
-        const matched = DEMO_ACCOUNTS.find((d) => d.role === cookieRole);
-        if (matched) {
-          const u: User = { ...matched, createdAt: new Date().toISOString() };
-          setUser(u);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        try {
+          const usuario = await fetchMe(session.access_token);
+          setUser(mapBackendUsuario(usuario));
+        } catch (err) {
+          console.error('Error cargando el perfil del usuario:', err);
+          // El backend rechazó el token (cuenta desactivada, token corrupto, etc.):
+          // cerramos la sesión local para no repetir este error en cada carga.
+          await supabase.auth.signOut();
         }
       }
-    } catch (err) {
-      console.error('Error initializing auth session:', err);
-    } finally {
       setIsLoading(false);
-    }
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.subscription.unsubscribe();
   }, []);
 
-  const login = async (data: LoginFormData): Promise<{ success: boolean; error?: string }> => {
+  const login = async (
+    data: LoginFormData,
+    captchaToken?: string
+  ): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 600)); // Smooth UX transition
+    const supabase = supabaseRef.current;
+
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
+
+    if (error || !authData.session) {
+      setIsLoading(false);
+      return { success: false, error: mapAuthError(error?.message || 'No se pudo iniciar sesión.') };
+    }
 
     try {
-      const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
-      const users: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-
-      // Find user by email
-      const foundUser = users.find(
-        (u) => u.email.toLowerCase() === data.email.toLowerCase().trim()
-      );
-
-      if (!foundUser) {
-        // Allow demo accounts or create fallback session
-        const demo = DEMO_ACCOUNTS.find(
-          (d) => d.email.toLowerCase() === data.email.toLowerCase().trim()
-        );
-        if (demo) {
-          const loggedUser: User = { ...demo, createdAt: new Date().toISOString() };
-          setUser(loggedUser);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedUser));
-          setCookie('auth_token', loggedUser.id);
-          setCookie('auth_role', loggedUser.role);
-          setIsLoading(false);
-          return { success: true };
-        }
-
-        // If email not found in mock store, for demo convenience we notify
-        setIsLoading(false);
-        return {
-          success: false,
-          error: 'No encontramos ninguna cuenta con este correo institucional. Puedes usar una de las cuentas de prueba o registrarte.',
-        };
-      }
-
-      setUser(foundUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(foundUser));
-      setCookie('auth_token', foundUser.id);
-      setCookie('auth_role', foundUser.role);
+      const usuario = await fetchMe(authData.session.access_token);
+      setUser(mapBackendUsuario(usuario));
       setIsLoading(false);
       return { success: true };
-    } catch {
+    } catch (err) {
       setIsLoading(false);
-      return { success: false, error: 'Ocurrió un error inesperado al iniciar sesión.' };
+      await supabase.auth.signOut();
+      const message = err instanceof ApiError ? err.message : 'No se pudo cargar tu perfil.';
+      return { success: false, error: message };
     }
   };
 
-  const loginWithDemo = async (email: string): Promise<boolean> => {
-    const demo = DEMO_ACCOUNTS.find((d) => d.email.toLowerCase() === email.toLowerCase());
-    if (!demo) return false;
-
-    const loggedUser: User = { ...demo, createdAt: new Date().toISOString() };
-    setUser(loggedUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedUser));
-    setCookie('auth_token', loggedUser.id);
-    setCookie('auth_role', loggedUser.role);
-    return true;
-  };
-
+  // No inicia sesión automáticamente: el docente se loguea manualmente después
+  // (así el formulario de registro no necesita su propio widget de Turnstile).
+  // El documento de autorización ya no se sube aquí, se sube como cualquier otro
+  // ítem del checklist tras el primer login.
   const signup = async (data: SignupFormData): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
     try {
-      // Validate that signed document is present (defense in depth)
-      if (!data.signedDocument) {
-        setIsLoading(false);
-        return {
-          success: false,
-          error: 'La autorización de notificación electrónica firmada vía Ciudadano Digital es estrictamente obligatoria para completar el registro.',
-        };
-      }
-
-      const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
-      const users: User[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
-
-      const existsByEmail = users.some(
-        (u) => u.email.toLowerCase() === data.email.toLowerCase().trim()
-      );
-      if (existsByEmail) {
-        setIsLoading(false);
-        return {
-          success: false,
-          error: 'Ya existe una cuenta registrada con este correo electrónico.',
-        };
-      }
-
-      const existsByDocument = users.some(
-        (u) => u.documentNumber && u.documentNumber.replace(/\D/g, '') === data.documentNumber.replace(/\D/g, '')
-      );
-      if (existsByDocument) {
-        setIsLoading(false);
-        return {
-          success: false,
-          error: 'Ya existe un registro asociado a este número de cédula. Cada docente solo puede registrarse una vez.',
-        };
-      }
-
-      const newUser: User = {
-        id: `user-${Date.now()}`,
-        firstName: data.firstName.trim(),
-        lastName: data.lastName.trim(),
+      await registrarDocente({
+        cedula: data.documentNumber.replace(/\D/g, ''),
+        nombres: data.firstName.trim(),
+        apellidos: data.lastName.trim(),
         email: data.email.toLowerCase().trim(),
-        phoneNumber: data.phoneNumber?.trim(),
-        documentNumber: data.documentNumber?.trim(),
-        role: 'docente',
-        document: data.signedDocument,
-        createdAt: new Date().toISOString(),
-      };
-
-      users.push(newUser);
-      localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(users));
-
-      // Auto login newly registered user
-      setUser(newUser);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-      setCookie('auth_token', newUser.id);
-      setCookie('auth_role', newUser.role);
-
+        password: data.password,
+        telefono: data.phoneNumber?.trim() || undefined,
+        tipoPosesion: data.tipoPosesion,
+        tipoDocumento: data.tipoDocumento,
+      });
       setIsLoading(false);
       return { success: true };
-    } catch {
+    } catch (err) {
       setIsLoading(false);
-      return { success: false, error: 'Error al procesar el registro de usuario.' };
+      const message =
+        err instanceof ApiError
+          ? err.status === 409
+            ? 'Ya existe una cuenta registrada con esta cédula o correo electrónico.'
+            : err.message
+          : err instanceof Error
+          ? err.message
+          : 'Ocurrió un error al procesar el registro.';
+      return { success: false, error: message };
+    }
+  };
+
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data: { session } } = await supabaseRef.current.auth.getSession();
+    return session?.access_token ?? null;
+  };
+
+  const refreshUser = async (): Promise<void> => {
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const usuario = await fetchMe(token);
+      setUser(mapBackendUsuario(usuario));
+    } catch (err) {
+      console.error('Error actualizando el perfil del usuario:', err);
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-    removeCookie('auth_token');
-    removeCookie('auth_role');
+    supabaseRef.current.auth.signOut();
   };
 
-  const switchRole = (newRole: UserRole) => {
-    if (!user) return;
-    const updated = { ...user, role: newRole };
-    setUser(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    setCookie('auth_role', newRole);
-  };
-
-  const resetPassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsLoading(false);
-    return { success: true };
+  // Cambiar la contraseña invalida la sesión actual (Supabase revoca sus tokens), así que no
+  // tiene sentido intentar refrescar el usuario con el mismo access token: cerramos sesión
+  // localmente y el usuario vuelve a loguearse ya con la contraseña nueva.
+  const cambiarPassword = async (passwordNueva: string): Promise<{ success: boolean; error?: string }> => {
+    const token = await getAccessToken();
+    if (!token) return { success: false, error: 'No se pudo validar tu sesión. Recarga la página e intenta de nuevo.' };
+    try {
+      await cambiarPasswordApi(token, passwordNueva);
+      setUser(null);
+      await supabaseRef.current.auth.signOut();
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'No se pudo cambiar la contraseña. Intenta de nuevo.';
+      return { success: false, error: message };
+    }
   };
 
   return (
@@ -224,11 +199,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         login,
-        loginWithDemo,
         signup,
         logout,
-        switchRole,
-        resetPassword,
+        cambiarPassword,
+        getAccessToken,
+        refreshUser,
       }}
     >
       {children}

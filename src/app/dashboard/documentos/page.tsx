@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { ChecklistDocumentItem } from '@/types/docente-checklist';
-import { INITIAL_DOCENTE_CHECKLIST } from '@/lib/constants/docente-documents';
+import { useDocenteChecklist } from '@/hooks/useDocenteChecklist';
+import { ApiError, fetchDocumentoUrl } from '@/lib/api';
+import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal';
 import {
   FileText,
-  Download,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -15,31 +15,17 @@ import {
   ArrowLeft,
   FolderOpen,
   Eye,
-  X,
-  FileCheck2,
+  Loader2,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'docente_checklist_state_magdalena';
-
 export default function DocumentosRadicadosPage() {
-  const { user } = useAuth();
-  const [items, setItems] = useState<ChecklistDocumentItem[]>(INITIAL_DOCENTE_CHECKLIST);
+  const { user, getAccessToken } = useAuth();
+  const { items, isLoading, error } = useDocenteChecklist();
   const [searchTerm, setSearchTerm] = useState('');
-  const [previewDoc, setPreviewDoc] = useState<ChecklistDocumentItem | null>(null);
-
-  useEffect(() => {
-    try {
-      const savedItems = localStorage.getItem(STORAGE_KEY);
-      if (savedItems) {
-        setItems(JSON.parse(savedItems));
-      }
-    } catch (e) {
-      console.error('Error loading documents state:', e);
-    }
-  }, []);
+  const [viewer, setViewer] = useState<{ url: string | null; fileName?: string; error?: string } | undefined>();
 
   // Filter only items that have an uploaded file
-  const uploadedDocs = items.filter((item) => !!item.fileName);
+  const uploadedDocs = items.filter((item) => !!item.documentoId);
 
   const filteredDocs = uploadedDocs.filter(
     (item) =>
@@ -47,6 +33,23 @@ export default function DocumentosRadicadosPage() {
       item.id.toString() === searchTerm.trim() ||
       (item.fileName && item.fileName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const handleView = async (documentoId: string | undefined, fileName?: string) => {
+    if (!documentoId) return;
+    setViewer({ url: null, fileName });
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const url = await fetchDocumentoUrl(token, documentoId);
+      setViewer({ url, fileName });
+    } catch (err) {
+      setViewer({
+        url: null,
+        fileName,
+        error: err instanceof ApiError ? err.message : 'No se pudo abrir el documento.',
+      });
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-fadeIn pb-16">
@@ -69,7 +72,8 @@ export default function DocumentosRadicadosPage() {
                 Mis Documentos Radicados para Posesión
               </h1>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Expediente digital del docente: {user ? `${user.firstName} ${user.lastName}` : 'Lic. Fernando Silva Pacheco'} • C.C. 1.082.945.312
+                Expediente digital del docente: {user ? `${user.firstName} ${user.lastName}` : ''}
+                {user?.documentNumber && ` • C.C. ${user.documentNumber}`}
               </p>
             </div>
           </div>
@@ -88,6 +92,13 @@ export default function DocumentosRadicadosPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="p-3.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Summary Banner */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -95,7 +106,7 @@ export default function DocumentosRadicadosPage() {
             Total de Soportes Subidos
           </div>
           <div className="text-2xl font-bold text-neutral-900 mt-1">
-            {uploadedDocs.length} de {items.length} archivos radicados
+            {isLoading ? '—' : `${uploadedDocs.length} de ${items.length} archivos radicados`}
           </div>
           <div className="text-xs text-neutral-500 mt-0.5">
             Los archivos listados a continuación ya cuentan con constancia de carga en el sistema.
@@ -113,7 +124,77 @@ export default function DocumentosRadicadosPage() {
 
       {/* Uploaded Documents Table */}
       <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile: card list */}
+        <div className="md:hidden divide-y divide-neutral-100">
+          {isLoading ? (
+            <div className="py-10 flex justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+            </div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="py-8 text-center text-neutral-500 text-xs px-6">
+              No se encontraron documentos radicados con el término de búsqueda.
+            </div>
+          ) : (
+            filteredDocs.map((item) => (
+              <div key={item.id} className="p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-neutral-500">#{item.id}</div>
+                    <div className="font-semibold text-neutral-900 text-sm truncate">{item.title}</div>
+                  </div>
+                  {item.status === 'aprobado' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex-shrink-0">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Aprobado
+                    </span>
+                  )}
+                  {item.status === 'en_revision' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex-shrink-0">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      En revisión
+                    </span>
+                  )}
+                  {item.status === 'rechazado' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-900 border border-red-300 flex-shrink-0">
+                      <AlertCircle className="w-3 h-3 text-red-600" />
+                      {item.archivoEliminado ? 'Archivo eliminado' : 'Rechazado'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 text-brand-700 font-medium text-xs">
+                  <FileText className="w-4 h-4 text-brand-600 flex-shrink-0" />
+                  <span className="truncate">{item.fileName || 'Documento radicado'}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-neutral-500">
+                  <span>{item.fileSize ? `${(item.fileSize / 1024).toFixed(0)} KB` : ''}</span>
+                  <span>
+                    {item.uploadedAt ? new Date(item.uploadedAt).toLocaleDateString('es-CO') : ''}
+                  </span>
+                </div>
+
+                {item.archivoEliminado ? (
+                  <p className="w-full mt-1 py-2 text-center text-[11px] text-red-600 font-semibold">
+                    Archivo eliminado del sistema, debes resubirlo
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleView(item.documentoId, item.fileName)}
+                    className="w-full mt-1 py-2 border border-neutral-200 hover:border-brand-300 text-neutral-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Ver detalle</span>
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop / tablet: table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
               <tr>
@@ -127,7 +208,13 @@ export default function DocumentosRadicadosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {filteredDocs.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-neutral-400 inline" />
+                  </td>
+                </tr>
+              ) : filteredDocs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-neutral-500 text-xs">
                     No se encontraron documentos radicados con el término de búsqueda.
@@ -150,16 +237,14 @@ export default function DocumentosRadicadosPage() {
                     <td className="py-3.5 px-6 text-brand-700 font-medium">
                       <div className="flex items-center gap-1.5 truncate max-w-xs">
                         <FileText className="w-4 h-4 text-brand-600 flex-shrink-0" />
-                        <span className="truncate">{item.fileName}</span>
+                        <span className="truncate">{item.fileName || 'Documento radicado'}</span>
                       </div>
                     </td>
                     <td className="py-3.5 px-6 text-neutral-600">
-                      {item.fileSize ? `${(item.fileSize / 1024).toFixed(0)} KB` : 'N/A'}
+                      {item.fileSize ? `${(item.fileSize / 1024).toFixed(0)} KB` : '—'}
                     </td>
                     <td className="py-3.5 px-6 text-neutral-500">
-                      {item.uploadedAt
-                        ? new Date(item.uploadedAt).toLocaleDateString('es-CO')
-                        : 'Reciente'}
+                      {item.uploadedAt ? new Date(item.uploadedAt).toLocaleDateString('es-CO') : '—'}
                     </td>
                     <td className="py-3.5 px-6">
                       {item.status === 'aprobado' && (
@@ -177,19 +262,21 @@ export default function DocumentosRadicadosPage() {
                       {item.status === 'rechazado' && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-900 border border-red-300">
                           <AlertCircle className="w-3 h-3 text-red-600" />
-                          Rechazado
+                          {item.archivoEliminado ? 'Archivo eliminado' : 'Rechazado'}
                         </span>
                       )}
                     </td>
                     <td className="py-3.5 px-6 text-right space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(item)}
-                        className="p-1.5 text-neutral-600 hover:text-brand-700 hover:bg-neutral-100 rounded-lg transition-colors"
-                        title="Ver detalle del archivo"
-                      >
-                        <Eye className="w-4 h-4 inline" />
-                      </button>
+                      {!item.archivoEliminado && (
+                        <button
+                          type="button"
+                          onClick={() => handleView(item.documentoId, item.fileName)}
+                          className="p-1.5 text-neutral-600 hover:text-brand-700 hover:bg-neutral-100 rounded-lg transition-colors"
+                          title="Ver archivo radicado"
+                        >
+                          <Eye className="w-4 h-4 inline" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -199,59 +286,12 @@ export default function DocumentosRadicadosPage() {
         </div>
       </div>
 
-      {/* Modal Preview */}
-      {previewDoc && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-brand-700" />
-                <h3 className="text-sm font-bold text-neutral-900 truncate">
-                  {previewDoc.fileName}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="p-1 text-neutral-400 hover:text-neutral-700 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="bg-neutral-100 rounded-xl p-6 text-center space-y-3">
-              <FileCheck2 className="w-16 h-16 text-brand-600 mx-auto animate-pulse" />
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-neutral-800">
-                  {previewDoc.title}
-                </p>
-                <p className="text-[11px] text-neutral-500">
-                  Ítem #{previewDoc.id} • {previewDoc.fileName}
-                </p>
-                <p className="text-[11px] text-neutral-500">
-                  Estado actual:{' '}
-                  <span className="font-bold capitalize text-brand-700">
-                    {previewDoc.status.replace('_', ' ')}
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-2">
-              <span className="text-[11px] text-neutral-400">
-                Secretaría de Educación del Magdalena
-              </span>
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="px-4 py-2 bg-brand-700 hover:bg-brand-800 text-white rounded-xl text-xs font-bold transition-colors"
-              >
-                Cerrar vista
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentViewerModal
+        url={viewer?.url}
+        fileName={viewer?.fileName}
+        error={viewer?.error}
+        onClose={() => setViewer(undefined)}
+      />
     </div>
   );
 }

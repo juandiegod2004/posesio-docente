@@ -1,5 +1,49 @@
 import { z } from 'zod';
-import type { UploadedDocument } from '@/types/auth';
+import { TipoDocumentoIdentidad } from '@/lib/api';
+import { TIPOS_DOCUMENTO_IDENTIDAD } from '@/lib/constants/informacion-adicional';
+
+const TIPO_DOCUMENTO_VALUES = TIPOS_DOCUMENTO_IDENTIDAD.map((o) => o.value) as [
+  TipoDocumentoIdentidad,
+  ...TipoDocumentoIdentidad[],
+];
+
+// Reglas compartidas con el formulario de registro de docente y el de
+// personal interno (admin), replicadas también en el backend.
+export const nombrePersonaSchema = (label: string) =>
+  z
+    .string()
+    .min(2, `${label} debe tener al menos 2 caracteres`)
+    .max(50, `${label} no debe superar los 50 caracteres`)
+    .regex(/^[A-Za-zÁÉÍÓÚÑÜáéíóúñü'\s-]+$/, `${label} no puede contener números ni caracteres especiales`);
+
+export const cedulaSchema = z
+  .string()
+  .min(6, 'Ingresa un número de cédula válido')
+  .max(10, 'La cédula no debe superar los 10 dígitos')
+  .regex(/^[0-9]+$/, 'Solo se permiten números en la cédula');
+
+export const telefonoSchema = z
+  .string()
+  .min(1, 'El teléfono es requerido')
+  .regex(/^[0-9\s]+$/, 'Solo se permiten números, sin código de país')
+  .refine((val) => val.replace(/\D/g, '').length === 10, 'El teléfono debe tener 10 dígitos');
+
+// Filtros de input en vivo (onChange): descartan el caracter en el momento en que se escribe,
+// en vez de solo mostrar un error después. Las reglas coinciden exactamente con los schemas de
+// arriba (y con el backend) para que nunca se pueda escribir algo que luego el submit rechace.
+export function filtrarNombrePersona(value: string): string {
+  return value.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü'\s-]/g, '');
+}
+
+export function filtrarSoloDigitos(value: string, maxLength: number): string {
+  return value.replace(/\D/g, '').slice(0, maxLength);
+}
+
+export const passwordSchema = z
+  .string()
+  .min(8, 'La contraseña debe tener al menos 8 caracteres')
+  .regex(/[A-Za-z]/, 'Debe incluir al menos una letra')
+  .regex(/[0-9]/, 'Debe incluir al menos un número');
 
 export const loginSchema = z.object({
   email: z
@@ -9,64 +53,39 @@ export const loginSchema = z.object({
   password: z
     .string()
     .min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  rememberMe: z.boolean(),
 });
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 
 export interface SignupFormData {
+  tipoPosesion: 'DOCENTE' | 'ADMINISTRATIVO';
   firstName: string;
   lastName: string;
+  tipoDocumento: TipoDocumentoIdentidad;
   documentNumber: string;
   email: string;
   phoneNumber: string;
   password: string;
   confirmPassword: string;
-  signedDocument: UploadedDocument | null;
   termsAccepted: boolean;
 }
 
 export const signupSchema = z
   .object({
-    firstName: z
-      .string()
-      .min(2, 'El nombre debe tener al menos 2 caracteres'),
-    lastName: z
-      .string()
-      .min(2, 'El apellido debe tener al menos 2 caracteres'),
-    documentNumber: z
-      .string()
-      .min(6, 'Ingresa un número de cédula válido')
-      .regex(/^[0-9.\s]+$/, 'Solo se permiten números en la cédula'),
+    tipoPosesion: z.enum(['DOCENTE', 'ADMINISTRATIVO']),
+    firstName: nombrePersonaSchema('El nombre'),
+    lastName: nombrePersonaSchema('El apellido'),
+    tipoDocumento: z.enum(TIPO_DOCUMENTO_VALUES, { message: 'Selecciona el tipo de documento' }),
+    documentNumber: cedulaSchema,
     email: z
       .string()
-      .min(1, 'El correo institucional es requerido')
+      .min(1, 'El correo es requerido')
       .email('Ingresa un correo electrónico válido'),
-    phoneNumber: z
-      .string()
-      .min(7, 'Ingresa un número de teléfono válido (mínimo 7 dígitos)')
-      .regex(/^[0-9+\s()-]+$/, 'Solo se permiten números y símbolos telefónicos'),
-    password: z
-      .string()
-      .min(8, 'La contraseña debe tener al menos 8 caracteres')
-      .regex(/[A-Za-z]/, 'Debe incluir al menos una letra')
-      .regex(/[0-9]/, 'Debe incluir al menos un número'),
+    phoneNumber: telefonoSchema,
+    password: passwordSchema,
     confirmPassword: z
       .string()
       .min(1, 'Debes confirmar tu contraseña'),
-    // Autorización de notificación electrónica firmada vía Ciudadano Digital: BLOQUEANTE
-    signedDocument: z
-      .object({
-        name: z.string().min(1, 'Nombre de archivo inválido'),
-        size: z.number().max(2 * 1024 * 1024, 'El archivo no debe exceder 2MB'),
-        type: z.string(),
-        dataUrl: z.string().optional(),
-        uploadedAt: z.string(),
-      })
-      .nullable()
-      .refine((val) => val !== null && val !== undefined, {
-        message: 'Debes adjuntar la autorización de notificación electrónica firmada vía Ciudadano Digital para poder registrarte',
-      }),
     termsAccepted: z.boolean().refine((val) => val === true, {
       message: 'Debes aceptar los Términos y Políticas de Privacidad',
     }),
@@ -76,13 +95,11 @@ export const signupSchema = z
     path: ['confirmPassword'],
   });
 
-export const resetPasswordSchema = z
+// Cambio de contraseña obligatorio (cuando el Super Usuario restablece la clave de alguien
+// con una temporal) o voluntario, para cualquier rol ya autenticado.
+export const cambiarPasswordSchema = z
   .object({
-    password: z
-      .string()
-      .min(8, 'La contraseña debe tener al menos 8 caracteres')
-      .regex(/[A-Za-z]/, 'Debe incluir al menos una letra')
-      .regex(/[0-9]/, 'Debe incluir al menos un número'),
+    password: passwordSchema,
     confirmPassword: z
       .string()
       .min(1, 'Debes confirmar la nueva contraseña'),
@@ -92,13 +109,4 @@ export const resetPasswordSchema = z
     path: ['confirmPassword'],
   });
 
-export type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
-
-export const forgotPasswordEmailSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'El correo electrónico es requerido')
-    .email('Ingresa un correo electrónico válido'),
-});
-
-export type ForgotPasswordEmailFormData = z.infer<typeof forgotPasswordEmailSchema>;
+export type CambiarPasswordFormData = z.infer<typeof cambiarPasswordSchema>;

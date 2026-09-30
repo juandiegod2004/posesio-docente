@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useDocenteChecklist } from '@/hooks/useDocenteChecklist';
 import { ChecklistDocumentItem, DocumentStatus } from '@/types/docente-checklist';
-import { INITIAL_DOCENTE_CHECKLIST } from '@/lib/constants/docente-documents';
+import { ApiError, fetchDocumentoUrl, finalizarDocumentacion } from '@/lib/api';
 import { UploadDocumentModal } from '@/components/docente/UploadDocumentModal';
 import { UploadConfirmModal } from '@/components/docente/UploadConfirmModal';
 import { WelcomeModal } from '@/components/docente/WelcomeModal';
 import { StatusRing } from '@/components/ui/StatusRing';
+import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal';
 import {
   FileText,
   CheckCircle2,
@@ -21,10 +23,9 @@ import {
   Eye,
   Search,
   X,
-  FileCheck2,
+  Loader2,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'docente_checklist_state_magdalena';
 const ONBOARDING_KEY = 'docente_onboarding_viewed_magdalena';
 
 const STATUS_RING_COLORS: Record<DocumentStatus, string> = {
@@ -35,8 +36,8 @@ const STATUS_RING_COLORS: Record<DocumentStatus, string> = {
 };
 
 export function DocenteChecklist() {
-  const { user } = useAuth();
-  const [items, setItems] = useState<ChecklistDocumentItem[]>(INITIAL_DOCENTE_CHECKLIST);
+  const { user, getAccessToken, refreshUser } = useAuth();
+  const { items, isLoading, error, reload } = useDocenteChecklist();
   const [selectedFilter, setSelectedFilter] = useState<'todos' | DocumentStatus>('todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedIds, setExpandedIds] = useState<Record<number, boolean>>({});
@@ -44,36 +45,42 @@ export function DocenteChecklist() {
   // Modals state
   const [uploadModalItem, setUploadModalItem] = useState<ChecklistDocumentItem | null>(null);
   const [confirmModalItem, setConfirmModalItem] = useState<ChecklistDocumentItem | null>(null);
-  const [previewDoc, setPreviewDoc] = useState<ChecklistDocumentItem | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [viewer, setViewer] = useState<{ url: string | null; fileName?: string; error?: string } | undefined>();
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
-      const savedItems = localStorage.getItem(STORAGE_KEY);
-      if (savedItems) {
-        setItems(JSON.parse(savedItems));
-      }
       const hasViewedOnboarding = localStorage.getItem(ONBOARDING_KEY);
       if (!hasViewedOnboarding) {
         setWelcomeOpen(true);
         localStorage.setItem(ONBOARDING_KEY, 'true');
       }
     } catch (e) {
-      console.error('Error loading checklist state:', e);
+      console.error('Error loading onboarding state:', e);
     }
   }, []);
 
-  const saveItems = (updated: ChecklistDocumentItem[]) => {
-    setItems(updated);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Error saving checklist state:', e);
-    }
-  };
-
   const toggleExpand = (id: number) => {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleViewDocument = async (item: ChecklistDocumentItem) => {
+    if (!item.documentoId) return;
+    setViewer({ url: null, fileName: item.fileName });
+    const token = await getAccessToken();
+    if (!token) return;
+    try {
+      const url = await fetchDocumentoUrl(token, item.documentoId);
+      setViewer({ url, fileName: item.fileName });
+    } catch (err) {
+      setViewer({
+        url: null,
+        fileName: item.fileName,
+        error: err instanceof ApiError ? err.message : 'No se pudo abrir el documento.',
+      });
+    }
   };
 
   // Progress metrics
@@ -82,7 +89,27 @@ export function DocenteChecklist() {
   const inReviewCount = items.filter((i) => i.status === 'en_revision').length;
   const rejectedCount = items.filter((i) => i.status === 'rechazado').length;
   const pendingCount = items.filter((i) => i.status === 'pendiente').length;
-  const progressPercent = Math.round((approvedCount / totalCount) * 100);
+  const progressPercent = totalCount === 0 ? 0 : Math.round((approvedCount / totalCount) * 100);
+
+  // Un documento RECHAZADO (incluye ARCHIVO_ELIMINADO, que también mapea a 'rechazado')
+  // cuenta como faltante: el backend exige corregirlo antes de permitir finalizar de nuevo.
+  const allUploaded = pendingCount === 0 && rejectedCount === 0;
+
+  const handleFinalizar = async () => {
+    if (!user?.docenteId) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    setIsFinalizing(true);
+    setFinalizeError(null);
+    try {
+      await finalizarDocumentacion(token, user.docenteId);
+      await refreshUser();
+    } catch (err) {
+      setFinalizeError(err instanceof ApiError ? err.message : 'No se pudo notificar a los validadores. Intenta de nuevo.');
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
 
   const attentionItems = useMemo(
     () =>
@@ -93,31 +120,20 @@ export function DocenteChecklist() {
     [items]
   );
 
-  const handleUploadSuccess = (
-    item: ChecklistDocumentItem,
-    fileInfo: { name: string; size: number; fileType?: string; dataUrl?: string }
-  ) => {
-    const updated = items.map((doc) => {
-      if (doc.id === item.id) {
-        return {
-          ...doc,
-          status: 'en_revision' as DocumentStatus,
-          fileName: fileInfo.name,
-          fileSize: fileInfo.size,
-          fileType: fileInfo.fileType,
-          dataUrl: fileInfo.dataUrl,
-          uploadedAt: new Date().toISOString(),
-          validatorComment: undefined,
-        };
-      }
-      return doc;
+  const handleUploadSuccess = (item: ChecklistDocumentItem, fileInfo: { name: string; size: number }) => {
+    setConfirmModalItem({
+      ...item,
+      status: 'en_revision',
+      fileName: fileInfo.name,
+      fileSize: fileInfo.size,
+      uploadedAt: new Date().toISOString(),
+      validatorComment: undefined,
     });
-
-    saveItems(updated);
-    const updatedDoc = updated.find((d) => d.id === item.id);
-    if (updatedDoc) {
-      setConfirmModalItem(updatedDoc);
-    }
+    reload();
+    // Refrescamos el usuario tras cualquier subida: puede afectar registroCompletado
+    // (documento de registro) o documentacionFinalizada (si esto corrige un rechazo que
+    // el backend ya había reseteado a false al momento de rechazar).
+    refreshUser();
   };
 
   const filteredItems = items.filter((item) => {
@@ -129,8 +145,56 @@ export function DocenteChecklist() {
     return matchesFilter && matchesSearch;
   });
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2.5">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        <span>{error}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn pb-16">
+      {/* Finalizar y notificar a validadores */}
+      {allUploaded && (
+        user?.documentacionFinalizada ? (
+          <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex items-center gap-3">
+            <CheckCircle2 className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+            <p className="text-sm text-emerald-900 font-medium">
+              Ya notificamos a los validadores que tu documentación está completa. Están revisándola.
+            </p>
+          </section>
+        ) : (
+          <section className="bg-brand-50 border border-brand-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-bold text-brand-950">Subiste todos tus documentos</p>
+              <p className="text-xs text-neutral-600">
+                Notifica a los validadores para que revisen tu proceso, así no tienes que esperar a que entren a revisar por su cuenta.
+              </p>
+              {finalizeError && <p className="text-xs text-red-600 font-medium">{finalizeError}</p>}
+            </div>
+            <button
+              type="button"
+              disabled={isFinalizing}
+              onClick={handleFinalizar}
+              className="h-11 px-5 rounded-lg bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 flex-shrink-0"
+            >
+              {isFinalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Finalizar y notificar
+            </button>
+          </section>
+        )
+      )}
+
       {/* Estado documental / Observaciones */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Estado documental (ring chart) */}
@@ -254,7 +318,7 @@ export function DocenteChecklist() {
                   <span>Contacto con Rectoría</span>
                 </div>
                 <p className="text-[11px] text-neutral-600 leading-relaxed">
-                  Al aprobar los 23 documentos, comunícate directamente con el <strong>rector de la institución asignada</strong>.
+                  Cuando se realice y firme el <strong>acta de posesión</strong>, comunícate directamente con el <strong>rector de la institución asignada</strong> para coordinar tu incorporación.
                 </p>
               </div>
             </div>
@@ -273,7 +337,7 @@ export function DocenteChecklist() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 text-[11px]">
+            <div className="flex flex-wrap items-center gap-1 text-[11px]">
               {(['todos', 'pendiente', 'en_revision', 'aprobado', 'rechazado'] as const).map((f) => (
                 <button
                   key={f}
@@ -347,13 +411,25 @@ export function DocenteChecklist() {
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                      <span className="w-8 h-8 rounded-lg border font-semibold text-xs flex items-center justify-center flex-shrink-0 mt-0.5 bg-neutral-100 border-neutral-300 text-neutral-700">
+                      <span
+                        className={`w-8 h-8 rounded-lg border font-semibold text-xs flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          item.category === 'registro'
+                            ? 'bg-brand-100 border-brand-300 text-brand-800'
+                            : 'bg-neutral-100 border-neutral-300 text-neutral-700'
+                        }`}
+                      >
                         {item.id}
                       </span>
 
                       <div className="space-y-1.5 min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-neutral-900 leading-snug">{item.title}</h3>
+
+                          {item.category === 'registro' && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-800 border border-brand-300">
+                              Requisito de registro
+                            </span>
+                          )}
 
                           {isPending && (
                             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-neutral-100 text-neutral-700 border border-neutral-300 inline-flex items-center gap-1">
@@ -403,10 +479,10 @@ export function DocenteChecklist() {
                     </div>
 
                     <div className="flex items-center gap-2 self-start lg:self-center pl-11 lg:pl-0 flex-shrink-0">
-                      {item.fileName && (
+                      {item.documentoId && !item.archivoEliminado && (
                         <button
                           type="button"
-                          onClick={() => setPreviewDoc(item)}
+                          onClick={() => handleViewDocument(item)}
                           className="px-3 py-1.5 border border-neutral-300 hover:border-brand-400 hover:bg-neutral-50 text-neutral-700 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
                           title="Ver archivo radicado"
                         >
@@ -425,18 +501,21 @@ export function DocenteChecklist() {
                           <span>Subir documento</span>
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setUploadModalItem(item)}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1.5 ${
-                            isRejected
-                              ? 'bg-red-600 hover:bg-red-700 text-white shadow-xs'
-                              : 'border border-neutral-300 hover:border-neutral-400 bg-white text-neutral-800 hover:bg-neutral-50'
-                          }`}
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>{isRejected ? 'Corregir y Resubir' : 'Resubir archivo'}</span>
-                        </button>
+                        // Aprobado: ya no se puede modificar. Solo queda "Ver soporte" (arriba).
+                        !isApproved && (
+                          <button
+                            type="button"
+                            onClick={() => setUploadModalItem(item)}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1.5 ${
+                              isRejected
+                                ? 'bg-red-600 hover:bg-red-700 text-white shadow-xs'
+                                : 'border border-neutral-300 hover:border-neutral-400 bg-white text-neutral-800 hover:bg-neutral-50'
+                            }`}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>{isRejected ? 'Corregir y Resubir' : 'Resubir archivo'}</span>
+                          </button>
+                        )
                       )}
 
                       <button
@@ -454,7 +533,11 @@ export function DocenteChecklist() {
                     <div className="mt-3.5 ml-0 sm:ml-11 bg-red-50 border-l-4 border-red-500 rounded-r-xl p-3.5 text-xs text-red-900 space-y-1">
                       <div className="flex items-center gap-1.5 font-bold text-red-950">
                         <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                        <span>Observación de corrección del validador:</span>
+                        <span>
+                          {item.archivoEliminado
+                            ? 'Aviso del sistema:'
+                            : 'Observación de corrección del validador:'}
+                        </span>
                       </div>
                       <p className="text-red-800 font-normal pl-5 leading-relaxed">“{item.validatorComment}”</p>
                       <div className="pl-5 pt-1 text-[11px] text-red-700 font-semibold flex items-center gap-1">
@@ -478,7 +561,7 @@ export function DocenteChecklist() {
                         </div>
                       )}
                       <div className="text-[11px] text-neutral-500 pt-1 border-t border-neutral-200">
-                        <span>Formato requerido: PDF o imagen escaneada legible (hasta 2 MB)</span>
+                        <span>Formato requerido: solo PDF (hasta 2 MB)</span>
                       </div>
                     </div>
                   )}
@@ -492,6 +575,7 @@ export function DocenteChecklist() {
       {/* Modals */}
       <UploadDocumentModal
         item={uploadModalItem}
+        docenteId={user?.docenteId}
         isOpen={!!uploadModalItem}
         onClose={() => setUploadModalItem(null)}
         onUploadSuccess={handleUploadSuccess}
@@ -505,69 +589,12 @@ export function DocenteChecklist() {
 
       <WelcomeModal isOpen={welcomeOpen} onClose={() => setWelcomeOpen(false)} />
 
-      {previewDoc && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-brand-700" />
-                <h3 className="text-sm font-bold text-neutral-900 truncate">{previewDoc.fileName}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="p-1 text-neutral-400 hover:text-neutral-700 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="bg-neutral-100 rounded-xl p-6 text-center space-y-3">
-              {previewDoc.dataUrl && (previewDoc.fileType?.includes('image') || previewDoc.fileName?.match(/\.(png|jpg|jpeg)$/i)) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewDoc.dataUrl}
-                  alt={previewDoc.fileName}
-                  className="max-h-72 mx-auto rounded-lg shadow-sm border border-neutral-300 object-contain"
-                />
-              ) : (
-                <div className="py-4">
-                  <FileCheck2 className="w-16 h-16 text-brand-600 mx-auto" />
-                </div>
-              )}
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-neutral-800">{previewDoc.title}</p>
-                <p className="text-[11px] text-neutral-500">Archivo radicado: {previewDoc.fileName}</p>
-                <p className="text-[11px] text-neutral-500">
-                  Estado actual:{' '}
-                  <span className="font-bold capitalize text-brand-700">{previewDoc.status.replace('_', ' ')}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-2">
-              {previewDoc.dataUrl ? (
-                <a
-                  href={previewDoc.dataUrl}
-                  download={previewDoc.fileName}
-                  className="text-xs font-semibold text-brand-700 hover:text-brand-900 underline"
-                >
-                  Descargar archivo radicado
-                </a>
-              ) : (
-                <span className="text-[11px] text-neutral-400">Documento oficial registrado en sistema</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="px-4 py-2 bg-brand-700 hover:bg-brand-800 text-white rounded-xl text-xs font-bold transition-colors"
-              >
-                Cerrar vista
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentViewerModal
+        url={viewer?.url}
+        fileName={viewer?.fileName}
+        error={viewer?.error}
+        onClose={() => setViewer(undefined)}
+      />
     </div>
   );
 }
