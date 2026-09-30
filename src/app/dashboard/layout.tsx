@@ -235,13 +235,6 @@ export default function DashboardLayout({
               comentarioRechazo={user.authorizationDocumentRejected.comentario}
               estado="rechazado"
             />
-          ) : user.authorizationDocumentPendiente && user.tipoDocumentoAutorizacionId ? (
-            <AuthorizationGateModal
-              docenteId={user.docenteId}
-              tipoDocumentoId={user.tipoDocumentoAutorizacionId}
-              comentarioRechazo={null}
-              estado="en_revision"
-            />
           ) : (
             !user.registroCompletado &&
             user.tipoDocumentoAutorizacionId && (

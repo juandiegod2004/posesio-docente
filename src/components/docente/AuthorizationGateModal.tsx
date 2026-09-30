@@ -4,15 +4,16 @@ import React, { useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
 import { ApiError, subirDocumento } from '@/lib/api';
-import { AlertCircle, Clock, FileWarning, Loader2, Upload, FileText, Trash2 } from 'lucide-react';
+import { AlertCircle, FileWarning, Loader2, Upload, FileText, Trash2 } from 'lucide-react';
 
 /**
- * Los 3 estados son mutuamente excluyentes mientras `registroCompletado` sea false:
+ * Los 2 estados son mutuamente excluyentes mientras `registroCompletado` sea false:
  * - 'pendiente_subir': nunca la subió (registro incompleto).
- * - 'en_revision': ya la subió, pero un validador todavía no la aprueba ni la rechaza.
  * - 'rechazado': un validador la rechazó, debe corregir y resubir.
+ * Subir la autorización desbloquea el resto del checklist de inmediato (no espera
+ * aprobación de un validador) — no existe un tercer estado "en revisión".
  */
-type AuthorizationGateEstado = 'pendiente_subir' | 'en_revision' | 'rechazado';
+type AuthorizationGateEstado = 'pendiente_subir' | 'rechazado';
 
 interface AuthorizationGateModalProps {
   docenteId: string;
@@ -24,9 +25,10 @@ interface AuthorizationGateModalProps {
 
 /**
  * Modal bloqueante: cubre todo el dashboard del docente mientras la autorización de
- * notificación electrónica (requisito de registro) no esté subida Y aprobada por un
- * validador. Sin este documento aprobado el docente no puede usar el resto del checklist,
- * así que no tiene botón de cierre ni se puede saltar en ninguno de los 3 estados.
+ * notificación electrónica (requisito de registro) no esté subida. Subirla desbloquea el
+ * resto del checklist de inmediato (no espera aprobación de un validador), así que este
+ * modal solo se muestra si nunca la subió o si un validador la rechazó — no tiene botón
+ * de cierre ni se puede saltar en ninguno de los 2 estados.
  */
 export function AuthorizationGateModal({
   docenteId,
@@ -43,40 +45,6 @@ export function AuthorizationGateModal({
   const isRechazo = estado === 'rechazado';
 
   useLockBodyScroll(true);
-
-  // Estado puramente informativo: ya se subió, un validador debe aprobarla o rechazarla.
-  // No hay ninguna acción que el docente pueda tomar, así que no se renderiza la zona de
-  // carga de archivo ni ningún botón de envío.
-  if (estado === 'en_revision') {
-    return (
-      <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
-        <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-5 border border-neutral-200 relative my-6">
-          <div className="flex items-start gap-3 border-b border-neutral-100 pb-4">
-            <span className="p-2 bg-amber-100 text-amber-600 rounded-xl flex-shrink-0">
-              <Clock className="w-5 h-5" />
-            </span>
-            <div className="space-y-1">
-              <h3 className="text-base sm:text-lg font-bold text-neutral-900 leading-snug">
-                Tu autorización está en revisión
-              </h3>
-              <p className="text-xs text-neutral-600">
-                Ya subiste tu autorización de notificación electrónica. Un validador debe aprobarla antes de que
-                puedas continuar con el resto de tu checklist.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-            <Loader2 className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5 animate-spin" />
-            <p className="text-xs text-amber-900 leading-relaxed">
-              No necesitas hacer nada más por ahora. Te notificaremos apenas un validador revise tu documento — si
-              lo rechaza, podrás corregirlo y volver a subirlo aquí mismo.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const handleFileProcess = (file: File) => {
     setError(null);

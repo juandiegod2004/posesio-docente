@@ -69,10 +69,9 @@ export interface BackendDocente {
   /** No nulo solo si el documento de autorización de notificación electrónica (registro) fue RECHAZADO. */
   documentoAutorizacionRechazado?: DocumentoAutorizacionRechazado | null;
   /** true si la autorización de notificación electrónica ya se subió (EN_REVISION) pero un
-   * validador todavía no la aprueba ni la rechaza. Mientras sea true, el docente sigue
-   * bloqueado (no puede subir otros documentos) pero no tiene ninguna acción pendiente:
-   * solo debe esperar. Mutuamente excluyente con `documentoAutorizacionRechazado` y con
-   * "nunca la subió" mientras `registroCompletado` sea false. */
+   * validador todavía no la aprueba ni la rechaza. Puramente informativo: subir la
+   * autorización desbloquea el resto del checklist de inmediato, así que este campo NO debe
+   * usarse para bloquear nada (a diferencia de `documentoAutorizacionRechazado`). */
   documentoAutorizacionPendiente: boolean;
   /** true si este docente debe completar el formulario de información adicional antes de
    * poder subir cualquier documento. Los docentes registrados antes de esta feature siempre

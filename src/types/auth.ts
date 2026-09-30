@@ -34,7 +34,8 @@ export interface User {
     actualizadoEn: string;
   } | null;
   /** true si ya subió la autorización (EN_REVISION) pero un validador aún no la aprueba ni
-   * la rechaza: sigue bloqueado, pero solo debe esperar (no hay ninguna acción que tomar). */
+   * la rechaza. Puramente informativo: subirla ya desbloqueó el resto del checklist, este
+   * campo no se usa para bloquear nada. */
   authorizationDocumentPendiente?: boolean;
 }
 
