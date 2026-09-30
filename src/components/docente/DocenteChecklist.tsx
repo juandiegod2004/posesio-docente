@@ -93,7 +93,9 @@ export function DocenteChecklist() {
 
   // Un documento RECHAZADO (incluye ARCHIVO_ELIMINADO, que también mapea a 'rechazado')
   // cuenta como faltante: el backend exige corregirlo antes de permitir finalizar de nuevo.
-  const allUploaded = pendingCount === 0 && rejectedCount === 0;
+  // totalCount > 0 evita el falso positivo de "todo subido" cuando el checklist llega vacío
+  // (ej. mientras el backend todavía no lo expone por no haber completado el registro).
+  const allUploaded = totalCount > 0 && pendingCount === 0 && rejectedCount === 0;
 
   const handleFinalizar = async () => {
     if (!user?.docenteId) return;
