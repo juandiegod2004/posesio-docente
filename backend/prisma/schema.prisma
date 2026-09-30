@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RolNombre {
+  SUPER_USUARIO
+  /// Oficina de Talento Humano: valida/rechaza los 24 documentos normales del
+  /// checklist (todo excepto la autorización de notificación electrónica, que es
+  /// competencia exclusiva de SAC). Antes se llamaba VALIDADOR (renombrado 2026-09-30
+  /// al separar la validación en dos oficinas distintas de la secretaría).
+  TALENTO_HUMANO
+  DOCENTE
+  GESTOR_DOCUMENTAL
+  /// Oficina de Servicio de Atención al Ciudadano: valida/rechaza EXCLUSIVAMENTE la
+  /// autorización de notificación electrónica (esRequisitoRegistro=true) — su
+  /// aprobación es lo que habilita al docente a subir el resto del checklist.
+  SAC
+}
+
+enum EstadoDocumento {
+  PENDIENTE
+  EN_REVISION
+  APROBADO
+  RECHAZADO
+  /// El archivo fue borrado directamente del bucket de Supabase Storage (fuera de la
+  /// aplicación) y ya no existe. Un trigger de BD pone esto automáticamente; el docente
+  /// debe volver a subir el documento. Ver migración `detectar_archivo_eliminado_storage`.
+  ARCHIVO_ELIMINADO
+}
+
+enum CanalNotificacion {
+  IN_APP
+  EMAIL
+}
+
+enum TipoNotificacion {
+  REGISTRO
+  DOCUMENTO_EN_REVISION
+  DOCUMENTO_APROBADO
+  DOCUMENTO_RECHAZADO
+  RECORDATORIO
+  RESTABLECIMIENTO_CLAVE
+  DOCUMENTACION_LISTA_REVISION
+  DOCUMENTACION_APROBADA
+  OTRO
+}
+
+/// Tipo de aspirante en el proceso de posesión — NO tiene relación con RolNombre.
+/// Ambos tipos de aspirante siguen siendo Usuario.rol = DOCENTE a nivel de permisos
+/// (mismas rutas, mismo checklist de 24 documentos); esto es solo para distinguir
+/// si el proceso es de un docente o de personal administrativo tomando posesión.
+enum TipoPosesion {
+  DOCENTE
+  ADMINISTRATIVO
+}
+
+enum TipoDocumentoIdentidad {
+  CEDULA_CIUDADANIA
+  CEDULA_EXTRANJERIA
+  TARJETA_IDENTIDAD
+  PASAPORTE
+  PEP
+  PPT
+}
+
+enum Sexo {
+  MASCULINO
+  FEMENINO
+}
+
+enum EstadoCivil {
+  SOLTERO
+  CASADO
+  UNION_LIBRE
+  SEPARADO
+  DIVORCIADO
+  VIUDO
+}
+
+enum TipoSangre {
+  O_POSITIVO
+  O_NEGATIVO
+  A_POSITIVO
+  A_NEGATIVO
+  B_POSITIVO
+  B_NEGATIVO
+  AB_POSITIVO
+  AB_NEGATIVO
+}
+
+/// Usuario de la plataforma. El id coincide con el id de auth.users en Supabase Auth
+/// (el usuario se crea primero en Supabase Auth y luego se replica aquí).
+model Usuario {
+  id                  String    @id @default(uuid())
+  cedula              String    @unique
+  nombres             String
+  apellidos           String
+  email               String    @unique
+  telefono            String?
+  rol                 RolNombre
+  activo              Boolean   @default(true)
+  /// true cuando un Super Usuario le restableció la clave (self-service de
+  /// "olvidé mi contraseña" fue eliminado a propósito): el frontend debe forzar
+  /// la pantalla de cambio de clave antes de dejarlo usar el resto de la app.
+  debeCambiarPassword Boolean   @default(false)
+  /// Tipo de documento de identidad asociado a `cedula` (que en realidad es el
+  /// número de documento, sin importar el tipo). Default CEDULA_CIUDADANIA para
+  /// las cuentas creadas antes de este campo (el caso ampliamente mayoritario).
+  tipoDocumento       TipoDocumentoIdentidad @default(CEDULA_CIUDADANIA)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  docente        Docente?
+  validaciones   Validacion[]
+  notificaciones Notificacion[]
+
+  @@map("usuarios")
+}
+
+/// Datos específicos del docente en proceso de posesión.
+model Docente {
+  id                        String       @id @default(uuid())
+  usuarioId                 String       @unique
+  usuario                   Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  registroCompletado        Boolean      @default(false)
+  tipoPosesion              TipoPosesion @default(DOCENTE)
+  /// El propio aspirante marca "ya subí todo" cuando los 24 documentos están
+  /// subidos (sin importar si ya fueron aprobados/rechazados) — dispara
+  /// notificación a validadores/staff para que revisen. Ver PATCH /:id/finalizar.
+  documentacionFinalizada   Boolean      @default(false)
+  documentacionFinalizadaEn DateTime?
+  /// Se marca cuando los 24 documentos alcanzan estado APROBADO (ver validarDocumento).
+  /// Evita reenviar el correo de "proceso completo" si un documento se rechaza y se
+  /// vuelve a aprobar después.
+  documentacionAprobada     Boolean      @default(false)
+  documentacionAprobadaEn   DateTime?
+
+  /// true para todo docente NUEVO (default) — bloquea el módulo de carga de
+  /// documentos hasta completar `informacionAdicionalCompleta`. Los docentes que
+  /// ya existían antes de este campo quedan en false para siempre vía backfill de
+  /// la migración: no se les exige retroactivamente (decisión explícita del usuario).
+  debeCompletarInformacionAdicional Boolean @default(true)
+  /// Se marca true cuando el docente envía PATCH /:id/informacion-adicional con
+  /// todos los campos obligatorios. Junto con `debeCompletarInformacionAdicional`
+  /// controla el bloqueo de POST /api/documentos (ver `subirDocumento`).
+  informacionAdicionalCompleta      Boolean @default(false)
+
+  sexo                 Sexo?
+  fechaNacimiento       DateTime?
+  /// Texto libre (no relación) — a diferencia de departamento/ciudad, no se pidió
+  /// importar un catálogo completo de países; departamento/ciudad de nacimiento
+  /// solo son obligatorios cuando este vale "Colombia".
+  paisNacimiento        String?
+  departamentoNacimientoId String?
+  departamentoNacimiento   Departamento? @relation("DepartamentoNacimiento", fields: [departamentoNacimientoId], references: [id])
+  ciudadNacimientoId       String?
+  ciudadNacimiento         Ciudad?       @relation("CiudadNacimiento", fields: [ciudadNacimientoId], references: [id])
+  cantidadHijos         Int?
+  fechaExpedicionCedula DateTime?
+  departamentoExpedicionId String?
+  departamentoExpedicion   Departamento? @relation("DepartamentoExpedicion", fields: [departamentoExpedicionId], references: [id])
+  ciudadExpedicionId       String?
+  ciudadExpedicion         Ciudad?       @relation("CiudadExpedicion", fields: [ciudadExpedicionId], references: [id])
+  /// Opcionales — no bloquean informacionAdicionalCompleta.
+  estadoCivil           EstadoCivil?
+  tipoSangre            TipoSangre?
+  direccion             String?
+
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+
+  documentos Documento[]
+
+  @@map("docentes")
+}
+
+/// Catálogo importado de los 32 departamentos + Bogotá D.C. (DIVIPOLA/DANE).
+/// Reutilizado tanto para lugar de nacimiento como lugar de expedición de cédula.
+model Departamento {
+  id             String   @id @default(uuid())
+  codigoDivipola String   @unique
+  nombre         String   @unique
+
+  ciudades Ciudad[]
+
+  docentesNacidosAqui   Docente[] @relation("DepartamentoNacimiento")
+  docentesExpedidosAqui Docente[] @relation("DepartamentoExpedicion")
+
+  @@map("departamentos")
+}
+
+/// Catálogo importado de los ~1123 municipios de Colombia (DIVIPOLA/DANE).
+model Ciudad {
+  id             String       @id @default(uuid())
+  codigoDivipola String       @unique
+  nombre         String
+  departamentoId String
+  departamento   Departamento @relation(fields: [departamentoId], references: [id])
+
+  docentesNacidosAqui   Docente[] @relation("CiudadNacimiento")
+  docentesExpedidosAqui Docente[] @relation("CiudadExpedicion")
+
+  @@map("ciudades")
+}
+
+/// Catálogo de tipos de documento (los 23 del checklist + el de autorización
+/// de notificación electrónica que se exige antes de completar el registro).
+model TipoDocumento {
+  id                  String  @id @default(uuid())
+  codigo              String  @unique
+  nombre              String
+  descripcion         String?
+  obligatorio         Boolean @default(true)
+  esRequisitoRegistro Boolean @default(false)
+  orden               Int     @default(0)
+
+  documentos Documento[]
+
+  @@map("tipos_documento")
+}
+
+/// Documento subido por un docente para un tipo específico. Se conserva un único
+/// registro activo por (docente, tipo); el historial de decisiones queda en Validacion.
+model Documento {
+  id                  String          @id @default(uuid())
+  docenteId           String
+  docente             Docente         @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+  tipoDocumentoId     String
+  tipoDocumento       TipoDocumento   @relation(fields: [tipoDocumentoId], references: [id])
+  archivoPath         String
+  archivoNombre       String
+  estado              EstadoDocumento @default(PENDIENTE)
+  comentarioValidador String?
+  subidoEn            DateTime        @default(now())
+  actualizadoEn       DateTime        @updatedAt
+
+  validaciones Validacion[]
+
+  @@unique([docenteId, tipoDocumentoId])
+  @@map("documentos")
+}
+
+/// Traza de cada decisión tomada sobre un documento: quién validó, cuándo y con qué comentario.
+model Validacion {
+  id               String          @id @default(uuid())
+  documentoId      String
+  documento        Documento       @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  validadorId      String
+  validador        Usuario         @relation(fields: [validadorId], references: [id])
+  estadoResultante EstadoDocumento
+  comentario       String?
+  createdAt        DateTime        @default(now())
+
+  @@map("validaciones")
+}
+
+/// Notificaciones in-app y de correo ante eventos clave (registro, correcciones, etc.).
+model Notificacion {
+  id        String            @id @default(uuid())
+  usuarioId String
+  usuario   Usuario           @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tipo      TipoNotificacion
+  canal     CanalNotificacion
+  mensaje   String
+  leida     Boolean           @default(false)
+  createdAt DateTime          @default(now())
+
+  /// Los siguientes 4 campos solo aplican a canal = EMAIL: auditoría interna de qué se
+  /// envió realmente y si el servidor SMTP lo aceptó, ya que no se usa ninguna
+  /// plataforma externa con su propio historial/dashboard de envíos.
+  emailAsunto String?
+  emailHtml   String?
+  emailEstado EstadoEnvioEmail?
+  emailError  String?
+
+  @@map("notificaciones")
+}
+
+enum EstadoEnvioEmail {
+  ENVIADO
+  FALLIDO
+}
