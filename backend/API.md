@@ -26,7 +26,7 @@ Si el token falta, es inválido, o el usuario está inactivo (baneado), la API r
 `SUPER_USUARIO` | `SAC` | `TALENTO_HUMANO` | `DOCENTE` | `GESTOR_DOCUMENTAL`
 
 `SAC` y `TALENTO_HUMANO` (antes un único rol `VALIDADOR`, dividido 2026-09-30) son las dos oficinas de la secretaría que validan documentos, cada una en su carril — ninguna puede validar lo de la otra (`PATCH /api/documentos/:id/validar` responde `403` si lo intenta):
-- **`SAC`**: valida EXCLUSIVAMENTE la autorización de notificación electrónica (`esRequisitoRegistro: true`) — su aprobación es lo que habilita al docente a subir el resto del checklist. Recibe los correos de "nuevo registro" y "autorización pendiente de revisión".
+- **`SAC`**: valida EXCLUSIVAMENTE la autorización de notificación electrónica (`esRequisitoRegistro: true`). El docente se desbloquea para el resto del checklist apenas la sube (no espera esta aprobación) — si SAC la rechaza, el docente se re-bloquea hasta corregirla. Recibe los correos de "nuevo registro" y "autorización pendiente de revisión".
 - **`TALENTO_HUMANO`**: valida el resto de los 24 documentos del checklist normal. Recibe el correo de "documentación lista para revisión" (cuando el docente termina de subir los 24).
 - **`SUPER_USUARIO`** no tiene esta restricción: puede validar cualquier documento (control total), y se le notifica de los 3 eventos.
 - Ambos (`SAC`/`TALENTO_HUMANO`) comparten el mismo acceso de solo-lectura a todos los docentes/documentos (listado, checklist, perfil, descarga) — la separación es solo sobre qué pueden *aprobar* y qué correos reciben, no sobre qué pueden *ver*.
@@ -143,14 +143,15 @@ Cuando el usuario es `DOCENTE`, `docente` trae además `tipoDocumentoAutorizacio
 
 Los tres (`tipoDocumentoAutorizacionId`/`documentoAutorizacionRechazado`/`documentoAutorizacionPendiente`) se refieren al mismo documento — "autorización de notificación electrónica" (Ciudadano Digital), el único con `tipoDocumento.esRequisitoRegistro: true`, que ya no se sube durante el registro (ver `POST /api/auth/registro`) sino desde el checklist normal.
 
-- `tipoDocumentoAutorizacionId` viene **siempre** que el usuario sea `DOCENTE` (nunca `null` en la práctica, salvo que el catálogo de tipos de documento esté mal sembrado). Sirve para que el frontend arme el flujo de subida (`POST /api/documentos` con este `tipoDocumentoId`) sin depender de que ya exista un `Documento` — es justo lo que hace falta para bloquear al docente con "sube tu autorización para continuar" mientras `registroCompletado` sea `false` (o sea, cuando **nunca se ha subido nada todavía**, no solo cuando fue rechazado).
-- `documentoAutorizacionRechazado` es `null` mientras ese documento no exista o no esté `RECHAZADO`; si no es `null`, hay que bloquear con el motivo del rechazo (`comentario`) — este es el caso de "ya se subió pero lo rechazaron".
-- `documentoAutorizacionPendiente` (nuevo, 2026-09-29) es `true` cuando el docente ya la subió y está `EN_REVISION`, esperando que un validador la apruebe — desde este cambio, **subir el archivo ya no desbloquea nada por sí solo** (ver `POST /api/documentos`), así que este es un tercer estado real, distinto de "nunca se subió" y de "la rechazaron".
+**Cambio 2026-09-30 (revierte el cambio de 2026-09-29): subir la autorización vuelve a desbloquear el resto del checklist de inmediato, sin esperar aprobación de SAC.** `registroCompletado` pasa a `true` en el mismo request de `POST /api/documentos` que sube este documento (ver ahí). Si SAC la rechaza después, `registroCompletado` vuelve a `false` y el docente se bloquea otra vez hasta que la resuba corregida — al resubirla se desbloquea de nuevo, sin esperar nueva aprobación.
 
-**Frontend — 3 estados posibles mientras `registroCompletado` sea `false`, mutuamente excluyentes:**
-1. Nunca subió nada → `documentoAutorizacionRechazado === null && documentoAutorizacionPendiente === false` → modal "sube tu autorización".
-2. Pendiente de revisión → `documentoAutorizacionPendiente === true` → modal informativo "tu autorización está en revisión, espera la aprobación de un validador" (sin acción que tomar, solo esperar).
-3. Rechazada → `documentoAutorizacionRechazado !== null` → modal con el motivo del rechazo, exige volver a subir.
+- `tipoDocumentoAutorizacionId` viene **siempre** que el usuario sea `DOCENTE` (nunca `null` en la práctica, salvo que el catálogo de tipos de documento esté mal sembrado). Sirve para que el frontend arme el flujo de subida (`POST /api/documentos` con este `tipoDocumentoId`) sin depender de que ya exista un `Documento` — es lo que hace falta para bloquear al docente con "sube tu autorización para continuar" mientras `registroCompletado` sea `false` (o sea, cuando **nunca se ha subido nada todavía**, o cuando lo subió y se lo rechazaron).
+- `documentoAutorizacionRechazado` es `null` mientras ese documento no exista o no esté `RECHAZADO`; si no es `null`, hay que bloquear con el motivo del rechazo (`comentario`) — este es el caso de "ya se subió pero lo rechazaron".
+- `documentoAutorizacionPendiente` es `true` cuando el docente ya la subió y está `EN_REVISION`, esperando que SAC la revise. **Ya NO bloquea navegación** (desde el cambio 2026-09-30) — es puramente informativo, útil si el frontend quiere mostrar un badge tipo "en revisión" sobre ese ítem del checklist, pero `registroCompletado` ya es `true` en ese momento así que el docente sigue de largo con el resto.
+
+**Frontend — 2 estados posibles mientras `registroCompletado` sea `false`, mutuamente excluyentes:**
+1. Nunca subió nada → `documentoAutorizacionRechazado === null` → modal "sube tu autorización".
+2. Rechazada → `documentoAutorizacionRechazado !== null` → modal con el motivo del rechazo, exige volver a subir.
 
 Los tres campos se recalculan en cada request, no hay que "limpiarlos" a mano. Bloquear la navegación con el modal correspondiente hasta que `registroCompletado` pase a `true` (vía `GET /api/auth/me`, `proxy.ts` o al montar el dashboard).
 
@@ -309,7 +310,7 @@ Los mismos nombres de campo que `PATCH /:id/informacion-adicional` recibe (`sexo
 
 ### `GET /api/docentes/:id/checklist`
 
-El propio docente (dueño de ese `id`) o cualquier rol revisor (`SAC`/`TALENTO_HUMANO`/`SUPER_USUARIO`) puede verlo sin restricción; `GESTOR_DOCUMENTAL` solo si `documentacionAprobada: true` (mismo criterio que `GET /api/docentes/:id`). Devuelve los **25** tipos de documento (los 24 del proceso + `AUTORIZACION_NOTIFICACION_ELECTRONICA` como primer ítem, `orden: 0`) con el estado del documento del docente en cada uno (o `null` si no ha subido nada). Este último ya no se sube durante el registro (ver `POST /api/auth/registro`) — el docente lo sube desde aquí, como cualquier otro, justo después de loguearse por primera vez. **Subirlo YA NO marca `registroCompletado = true` automáticamente** (cambio 2026-09-29) — eso ahora requiere que `SAC` lo apruebe explícitamente, ver `PATCH /api/documentos/:id/validar`.
+El propio docente (dueño de ese `id`) o cualquier rol revisor (`SAC`/`TALENTO_HUMANO`/`SUPER_USUARIO`) puede verlo sin restricción; `GESTOR_DOCUMENTAL` solo si `documentacionAprobada: true` (mismo criterio que `GET /api/docentes/:id`). Devuelve los **25** tipos de documento (los 24 del proceso + `AUTORIZACION_NOTIFICACION_ELECTRONICA` como primer ítem, `orden: 0`) con el estado del documento del docente en cada uno (o `null` si no ha subido nada). Este último ya no se sube durante el registro (ver `POST /api/auth/registro`) — el docente lo sube desde aquí, como cualquier otro, justo después de loguearse por primera vez. **Subirlo marca `registroCompletado = true` de inmediato** (cambio 2026-09-30, revierte el cambio de 2026-09-29) — el docente no espera a que `SAC` lo apruebe para seguir con el resto, ver `POST /api/documentos` y `PATCH /api/documentos/:id/validar`.
 
 ```json
 {
@@ -452,21 +453,20 @@ Requiere rol `DOCENTE`. Sube (o vuelve a subir tras un rechazo) un documento del
 | `tipoDocumentoId` | string (uuid) | Uno de los ids de `GET /api/tipos-documento` (para completar el registro, usa el que tenga `codigo: "AUTORIZACION_NOTIFICACION_ELECTRONICA"`) |
 | `archivo` | file | Solo PDF, máx. 10MB (se valida mimetype y también la firma real del archivo) |
 
-El documento queda en estado `EN_REVISION`. Si el `tipoDocumento` es el de autorización de notificación electrónica, notifica (in-app + email) a todo el personal revisor activo avisando que hay una autorización nueva pendiente de revisión — ver "Aprobación explícita de la autorización" en `PATCH /api/documentos/:id/validar` para lo que pasa después.
+El documento queda en estado `EN_REVISION`. Si el `tipoDocumento` es el de autorización de notificación electrónica, además de quedar `EN_REVISION` se marca `Docente.registroCompletado = true` **en el mismo request** (cambio 2026-09-30, revierte el cambio de 2026-09-29 — ver más abajo) y se notifica (in-app + email) a `SAC`/`SUPER_USUARIO` para que la revisen, aunque el docente ya puede seguir subiendo el resto del checklist sin esperar esa revisión.
 
 Respuesta `201`: el `Documento` creado/actualizado. Errores: `403` si el docente no es el dueño, `404` si no existe el docente o el tipo de documento, `400` si el archivo no es PDF (`"Solo se aceptan archivos PDF"` si el mimetype declarado no es `application/pdf`, o `"El archivo no es un PDF válido"` si el mimetype dice PDF pero el contenido no empieza con la firma `%PDF-`).
 
-#### Carga de documentos bloqueada (nuevo, 2026-09-29)
+#### Carga de documentos bloqueada
 
-Dos precondiciones nuevas, ambas devuelven `403` (no `400`, porque no es un error del archivo sino de secuencia/estado):
+Dos precondiciones, ambas devuelven `403` (no `400`, porque no es un error del archivo sino de secuencia/estado):
 
 1. **Información adicional incompleta**: si `docente.debeCompletarInformacionAdicional === true` y `docente.informacionAdicionalCompleta === false`, cualquier subida (incluida la autorización de notificación electrónica) devuelve `403` con `"Debes completar tu información adicional antes de subir documentos."`. Ver `PATCH /api/docentes/:id/informacion-adicional`. Los docentes con `debeCompletarInformacionAdicional === false` (los que ya existían antes de este feature) nunca chocan con esto.
-2. **Autorización de notificación electrónica pendiente**: para cualquier documento que NO sea `AUTORIZACION_NOTIFICACION_ELECTRONICA`, si `docente.registroCompletado === false`, `403` con uno de estos tres mensajes según el estado real de esa autorización:
+2. **Autorización de notificación electrónica pendiente**: para cualquier documento que NO sea `AUTORIZACION_NOTIFICACION_ELECTRONICA`, si `docente.registroCompletado === false`, `403` con uno de estos dos mensajes según el estado real de esa autorización:
    - `"Debes subir primero la autorización de notificación electrónica."` — nunca la subió.
-   - `"Tu autorización de notificación electrónica está pendiente de aprobación por un validador."` — la subió, está `EN_REVISION`.
-   - `"Tu autorización de notificación electrónica fue rechazada. Corrígela antes de continuar."` — se la rechazaron.
+   - `"Tu autorización de notificación electrónica fue rechazada. Corrígela antes de continuar."` — se la rechazaron (ver `PATCH /api/documentos/:id/validar`, que resetea `registroCompletado` a `false` en ese caso).
 
-   `registroCompletado` ya **no** se marca al subir el archivo (cambio 2026-09-29) — solo cuando un validador la **aprueba** explícitamente (ver `PATCH /api/documentos/:id/validar`). Antes esto solo lo impedía el frontend con el modal bloqueante; ahora también está reforzado en el backend.
+   **Cambio 2026-09-30 (revierte el cambio de 2026-09-29):** `registroCompletado` vuelve a marcarse al **subir** el archivo (no al aprobarlo) — el docente ya no espera a que SAC revise la autorización para seguir con el resto del checklist. Si SAC la rechaza después, `registroCompletado` vuelve a `false` (re-bloqueando) hasta que la resuba corregida, momento en el que se vuelve a desbloquear automáticamente.
 
 **Frontend:** capturar estos `403` específicos (por el mensaje, ya que el código es el mismo que otros casos de ownership) y redirigir al paso correspondiente en vez de mostrar un error genérico — en la práctica no debería alcanzarse nunca si la UI sigue el orden correcto (información adicional → autorización → resto del checklist), pero sirve como defensa si alguien llama la API fuera de orden.
 
@@ -486,7 +486,7 @@ Requiere rol `SAC`, `TALENTO_HUMANO` o `SUPER_USUARIO`. Aprueba o rechaza un doc
 
 **División SAC / Talento Humano (2026-09-30):** cada rol solo puede validar su tipo de documento — `SAC` únicamente la autorización de notificación electrónica (`esRequisitoRegistro: true`), `TALENTO_HUMANO` únicamente el resto del checklist (`esRequisitoRegistro: false`). Si cualquiera intenta validar el tipo que no le corresponde, `403` con un mensaje explícito ("SAC solo puede validar la autorización..." / "Talento Humano no valida la autorización..."). `SUPER_USUARIO` no tiene esta restricción, puede validar cualquier documento.
 
-**Aprobación explícita de la autorización (cambio 2026-09-29):** si el documento aprobado es la autorización de notificación electrónica (`tipoDocumento.esRequisitoRegistro: true`), este es el ÚNICO momento en que se marca `Docente.registroCompletado = true` — ya no pasa automáticamente al subir el archivo (ver `POST /api/documentos`). El docente queda bloqueado para subir cualquier otro documento hasta que esto ocurra. El correo/notificación en este caso específico trae un mensaje distinto ("ya puedes continuar con el resto de tu documentación") en vez del genérico de "documento aprobado".
+**Aprobación/rechazo de la autorización (cambio 2026-09-30, revierte el cambio de 2026-09-29):** `Docente.registroCompletado` ya se marcó `true` al **subir** el archivo (ver `POST /api/documentos`), así que aprobar este documento ya no necesita tocar ese campo — usa el mensaje genérico de "documento aprobado". Si en cambio se **rechaza** el documento de autorización (`tipoDocumento.esRequisitoRegistro: true`), este endpoint pone `Docente.registroCompletado = false` de nuevo, re-bloqueando al docente hasta que lo resuba corregido (momento en el que `POST /api/documentos` lo vuelve a poner en `true`). El correo de rechazo de este documento específico trae un mensaje distinto, aclarando que debe corregirlo para seguir con el resto de su documentación.
 
 Si esta aprobación deja **todos** los documentos del docente en `APROBADO`, además marca `Docente.documentacionAprobada = true` (con `documentacionAprobadaEn`) y dispara una segunda notificación (tipo `DOCUMENTACION_APROBADA`, in-app + email) avisándole que su proceso de posesión quedó completamente aprobado. `documentacionAprobada` evita reenviar este correo si más adelante un documento se rechaza y se vuelve a aprobar.
 

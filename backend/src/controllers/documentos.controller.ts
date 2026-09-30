@@ -112,9 +112,10 @@ export const subirDocumento = async (req: Request, res: Response) => {
   const tipoDocumento = await prisma.tipoDocumento.findUnique({ where: { id: tipoDocumentoId } });
   if (!tipoDocumento) throw new AppError(404, "Tipo de documento no encontrado");
 
-  // La autorización de notificación electrónica ya no se autoaprueba al subirla:
-  // un validador debe revisarla y aprobarla (ver validarDocumento) para que
-  // registroCompletado pase a true y se desbloquee el resto del checklist.
+  // La autorización de notificación electrónica desbloquea el resto del checklist
+  // apenas se sube (ver más abajo) — no espera aprobación de un validador. Si este
+  // chequeo dispara es porque nunca se subió, o porque se subió y luego un validador
+  // la rechazó (lo que resetea registroCompletado a false, ver validarDocumento).
   if (!tipoDocumento.esRequisitoRegistro && !docente.registroCompletado) {
     const autorizacion = await prisma.documento.findFirst({
       where: { docenteId, tipoDocumento: { esRequisitoRegistro: true } },
@@ -122,9 +123,6 @@ export const subirDocumento = async (req: Request, res: Response) => {
     });
     if (autorizacion?.estado === "RECHAZADO") {
       throw new AppError(403, "Tu autorización de notificación electrónica fue rechazada. Corrígela antes de continuar.");
-    }
-    if (autorizacion?.estado === "EN_REVISION") {
-      throw new AppError(403, "Tu autorización de notificación electrónica está pendiente de aprobación por un validador.");
     }
     throw new AppError(403, "Debes subir primero la autorización de notificación electrónica.");
   }
@@ -157,20 +155,24 @@ export const subirDocumento = async (req: Request, res: Response) => {
     await eliminarArchivoDocumento(documentoExistente.archivoPath);
   }
 
-  // Ya no marca registroCompletado acá — eso ahora pasa solo cuando un validador
-  // APRUEBA este documento (ver validarDocumento). Lo que sí hace falta es avisarle
-  // al personal revisor que hay una autorización nueva esperando revisión.
+  // La autorización de notificación electrónica desbloquea el resto del checklist
+  // apenas se sube — no espera a que un validador la apruebe (a diferencia del resto
+  // de documentos, que sí requieren aprobación explícita para cada uno). Si luego SAC
+  // la rechaza, registroCompletado vuelve a false y el docente se bloquea de nuevo
+  // (ver validarDocumento); al volver a subirla corregida, se desbloquea otra vez acá.
   if (tipoDocumento.esRequisitoRegistro) {
-    // Aprobar la autorización de notificación electrónica es competencia exclusiva
-    // de SAC (+ SUPER_USUARIO), así que solo a ellos se les notifica. TALENTO_HUMANO
-    // no valida este documento (ver validarDocumento) y GESTOR_DOCUMENTAL tampoco
-    // participa de la revisión de documentos pendientes (ver nota de rol en
-    // docentes.controller.ts) — ninguno de los dos recibe esta notificación.
+    await prisma.docente.update({ where: { id: docenteId }, data: { registroCompletado: true } });
+
+    // Aprobar/rechazar esta autorización sigue siendo competencia exclusiva de SAC
+    // (+ SUPER_USUARIO) — se les avisa para que la revisen, aunque ya no bloquea al
+    // docente mientras tanto. TALENTO_HUMANO no valida este documento (ver
+    // validarDocumento) y GESTOR_DOCUMENTAL no participa de la revisión de
+    // documentos pendientes (ver nota de rol en docentes.controller.ts).
     const revisores = await prisma.usuario.findMany({
       where: { rol: { in: ["SAC", "SUPER_USUARIO"] }, activo: true },
       select: { id: true },
     });
-    const mensaje = `${docente.usuario.nombres} ${docente.usuario.apellidos} (cédula ${docente.usuario.cedula}) subió su autorización de notificación electrónica — pendiente de revisión para poder continuar con el resto de su documentación.`;
+    const mensaje = `${docente.usuario.nombres} ${docente.usuario.apellidos} (cédula ${docente.usuario.cedula}) subió su autorización de notificación electrónica — pendiente de revisión.`;
     await Promise.all(
       revisores.map((revisor) =>
         notificar({
@@ -277,41 +279,41 @@ export const validarDocumento = async (req: Request, res: Response) => {
     return tx.documento.findUniqueOrThrow({ where: { id } });
   });
 
-  // La aprobación de la autorización de notificación electrónica es el único caso
-  // que desbloquea el resto del checklist (registroCompletado) — ya no se marca al
-  // subir el archivo, sino solo cuando un validador la aprueba (ver subirDocumento).
-  const esAutorizacionAprobada = estado === "APROBADO" && documento.tipoDocumento.esRequisitoRegistro;
-  if (esAutorizacionAprobada) {
-    await prisma.docente.update({ where: { id: documento.docenteId }, data: { registroCompletado: true } });
+  // Un rechazo de la autorización de notificación electrónica vuelve a bloquear al
+  // docente (registroCompletado a false) hasta que la resuba corregida — se
+  // desbloquea otra vez en subirDocumento, sin esperar nueva aprobación. La
+  // aprobación de este documento ya no necesita tocar registroCompletado: quedó en
+  // true desde que se subió (ver subirDocumento).
+  const esAutorizacionRechazada = estado === "RECHAZADO" && documento.tipoDocumento.esRequisitoRegistro;
+  if (esAutorizacionRechazada) {
+    await prisma.docente.update({ where: { id: documento.docenteId }, data: { registroCompletado: false } });
   }
 
   await notificar({
     usuarioId: documento.docente.usuario.id,
     tipo: estado === "APROBADO" ? "DOCUMENTO_APROBADO" : "DOCUMENTO_RECHAZADO",
-    mensaje: esAutorizacionAprobada
-      ? "Tu autorización de notificación electrónica fue aprobada. Ya puedes continuar con el resto de tu documentación."
+    mensaje: esAutorizacionRechazada
+      ? `Tu autorización de notificación electrónica fue rechazada: ${comentario}. Debes corregirla y volver a subirla para continuar con el resto de tu documentación.`
       : estado === "APROBADO"
         ? `Tu documento "${documento.tipoDocumento.nombre}" fue aprobado.`
         : `Tu documento "${documento.tipoDocumento.nombre}" fue rechazado: ${comentario}`,
     email: {
-      asunto: esAutorizacionAprobada
-        ? "Autorización aprobada — ya puedes continuar con tu documentación"
-        : `Actualización de tu documento: ${documento.tipoDocumento.nombre}`,
+      asunto: estado === "APROBADO" ? `Documento aprobado: ${documento.tipoDocumento.nombre}` : `Actualización de tu documento: ${documento.tipoDocumento.nombre}`,
       badgeTexto: estado === "APROBADO" ? "Documento aprobado" : "Documento rechazado",
       badgeTono: estado === "APROBADO" ? "exito" : "peligro",
       encabezado: `Hola ${documento.docente.usuario.nombres},`,
-      parrafos: esAutorizacionAprobada
-        ? [
-            'Tu <strong>autorización de notificación electrónica</strong> fue <strong style="color:#4d9142">aprobada</strong>.',
-            "Ya puedes continuar subiendo el resto de los documentos de tu checklist.",
-          ]
-        : estado === "APROBADO"
-          ? [`Tu documento <strong>${documento.tipoDocumento.nombre}</strong> fue <strong style="color:#4d9142">aprobado</strong>.`]
+      parrafos: estado === "APROBADO"
+        ? [`Tu documento <strong>${documento.tipoDocumento.nombre}</strong> fue <strong style="color:#4d9142">aprobado</strong>.`]
+        : esAutorizacionRechazada
+          ? [
+              'Tu <strong>autorización de notificación electrónica</strong> fue <strong style="color:#d61b46">rechazada</strong>.',
+              "Debes corregirla y volver a subirla antes de continuar con el resto de tu documentación.",
+            ]
           : [
               `Tu documento <strong>${documento.tipoDocumento.nombre}</strong> fue <strong style="color:#d61b46">rechazado</strong>. Revisa el comentario y vuelve a subirlo corregido.`,
             ],
       destacado: estado === "RECHAZADO" ? `"${comentario}"` : undefined,
-      ctaTexto: esAutorizacionAprobada ? "Continuar con mi checklist" : estado === "APROBADO" ? "Ver mi checklist" : "Corregir y volver a subir",
+      ctaTexto: estado === "APROBADO" ? "Ver mi checklist" : "Corregir y volver a subir",
       ctaUrl: URL_LOGIN,
     },
   });
