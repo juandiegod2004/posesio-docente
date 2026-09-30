@@ -4,6 +4,9 @@
   "private": true,
   "description": "API backend para el proceso de posesión de docentes - SED Magdalena",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
