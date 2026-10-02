@@ -2,15 +2,18 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { ShieldAlert, Users, Database, Activity, UserPlus, Key, Loader2, AlertCircle } from 'lucide-react';
+import { ShieldAlert, Users, Database, Activity, UserPlus, Key, Loader2, AlertCircle, Ban, Trash2 } from 'lucide-react';
 import { ROLES } from '@/lib/constants/roles';
 import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
 import {
   ApiError,
   BackendUsuario,
+  CedulaBloqueada,
   DocenteResumen,
   actualizarActivoUsuario,
+  eliminarCedulaBloqueada,
   fetchBackendHealth,
+  fetchCedulasBloqueadas,
   fetchDocentes,
   fetchDocumentos,
   fetchUsuariosStaff,
@@ -18,6 +21,7 @@ import {
 import { CreateStaffModal } from '@/components/admin/CreateStaffModal';
 import { ResetPasswordModal, ResetPasswordTarget } from '@/components/admin/ResetPasswordModal';
 import { ChangeRoleModal, ChangeRoleTarget } from '@/components/admin/ChangeRoleModal';
+import { AddCedulaBloqueadaModal } from '@/components/admin/AddCedulaBloqueadaModal';
 
 export default function AdminDashboardPage() {
   const { role, user, getAccessToken } = useAuth();
@@ -26,10 +30,13 @@ export default function AdminDashboardPage() {
   const [docentes, setDocentes] = useState<DocenteResumen[]>([]);
   const [documentosAprobados, setDocumentosAprobados] = useState<number | null>(null);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
+  const [cedulasBloqueadas, setCedulasBloqueadas] = useState<CedulaBloqueada[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [blacklistModalOpen, setBlacklistModalOpen] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [removingCedulaId, setRemovingCedulaId] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<ResetPasswordTarget | null>(null);
   const [roleTarget, setRoleTarget] = useState<ChangeRoleTarget | null>(null);
 
@@ -39,16 +46,18 @@ export default function AdminDashboardPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [staffData, docentesData, aprobados, healthOk] = await Promise.all([
+      const [staffData, docentesData, aprobados, healthOk, cedulasBloqueadasData] = await Promise.all([
         fetchUsuariosStaff(token),
         fetchDocentes(token),
         fetchDocumentos(token, { estado: 'APROBADO' }),
         fetchBackendHealth(),
+        fetchCedulasBloqueadas(token),
       ]);
       setStaff(staffData);
       setDocentes(docentesData);
       setDocumentosAprobados(aprobados.length);
       setBackendUp(healthOk);
+      setCedulasBloqueadas(cedulasBloqueadasData);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudieron cargar los datos de administración.');
     } finally {
@@ -75,6 +84,20 @@ export default function AdminDashboardPage() {
       alert(err instanceof ApiError ? err.message : 'No se pudo actualizar la cuenta.');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleRemoveCedula = async (entry: CedulaBloqueada) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    setRemovingCedulaId(entry.id);
+    try {
+      await eliminarCedulaBloqueada(token, entry.id);
+      await loadData();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'No se pudo quitar la cédula de la lista negra.');
+    } finally {
+      setRemovingCedulaId(null);
     }
   };
 
@@ -279,7 +302,78 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
+      {/* Lista negra de cédulas */}
+      <div className="bg-white rounded-xl border border-neutral-200 shadow-xs overflow-hidden">
+        <div className="px-6 py-4 border-b border-neutral-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-neutral-800">Lista Negra de Cédulas</h2>
+            <p className="text-[11px] text-neutral-500 mt-0.5">
+              Bloquea el auto-registro de una cédula (ej. título académico falso reportado). No afecta cuentas ya
+              registradas.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBlacklistModalOpen(true)}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 self-start sm:self-auto shadow-xs transition-colors"
+          >
+            <Ban className="w-4 h-4" />
+            <span>Agregar a lista negra</span>
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="py-10 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+          </div>
+        ) : cedulasBloqueadas.length === 0 ? (
+          <div className="px-6 py-12 text-center text-xs text-neutral-500">
+            No hay cédulas bloqueadas por ahora.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
+                <tr>
+                  <th className="py-3 px-6 font-semibold">Cédula</th>
+                  <th className="py-3 px-6 font-semibold">Motivo</th>
+                  <th className="py-3 px-6 font-semibold">Agregada el</th>
+                  <th className="py-3 px-6 font-semibold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {cedulasBloqueadas.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-neutral-50/80 transition-colors">
+                    <td className="py-3.5 px-6 font-semibold text-neutral-900">{entry.cedula}</td>
+                    <td className="py-3.5 px-6 text-neutral-600 max-w-md">{entry.motivo}</td>
+                    <td className="py-3.5 px-6 text-neutral-600">
+                      {new Date(entry.createdAt).toLocaleDateString('es-CO')}
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      <button
+                        type="button"
+                        disabled={removingCedulaId === entry.id}
+                        onClick={() => handleRemoveCedula(entry)}
+                        className="font-semibold text-red-600 hover:text-red-800 disabled:opacity-60 inline-flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Quitar</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <CreateStaffModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onCreated={loadData} />
+      <AddCedulaBloqueadaModal
+        isOpen={blacklistModalOpen}
+        onClose={() => setBlacklistModalOpen(false)}
+        onAdded={loadData}
+      />
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
       <ChangeRoleModal
         target={roleTarget}

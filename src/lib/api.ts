@@ -411,6 +411,49 @@ export async function cambiarRolUsuario(
   return res.json();
 }
 
+export interface CedulaBloqueada {
+  id: string;
+  cedula: string;
+  motivo: string;
+  agregadoPorId: string;
+  createdAt: string;
+}
+
+/** GET /api/cedulas-bloqueadas — Solo Super Usuario. Lista negra: cédulas a las que se les
+ * niega el auto-registro (`POST /api/auth/registro` responde 403 genérico, sin revelar el
+ * motivo real al candidato). No afecta cuentas ya registradas. */
+export async function fetchCedulasBloqueadas(accessToken: string): Promise<CedulaBloqueada[]> {
+  const res = await fetch('/api/cedulas-bloqueadas', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
+  return res.json();
+}
+
+/** POST /api/cedulas-bloqueadas — agrega una cédula a la lista negra. 409 si ya está. */
+export async function agregarCedulaBloqueada(
+  accessToken: string,
+  payload: { cedula: string; motivo: string }
+): Promise<CedulaBloqueada> {
+  const res = await fetch('/api/cedulas-bloqueadas', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
+  return res.json();
+}
+
+/** DELETE /api/cedulas-bloqueadas/:id — quita una entrada (ej. reporte erróneo). 404 si no existe. */
+export async function eliminarCedulaBloqueada(accessToken: string, id: string): Promise<void> {
+  const res = await fetch(`/api/cedulas-bloqueadas/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
+}
+
 /**
  * PATCH /api/usuarios/:id/clave — Solo Super Usuario. Restablece la clave de CUALQUIER
  * usuario (staff o docente, usando su `usuario.id`, no el `docenteId`) a una temporal
