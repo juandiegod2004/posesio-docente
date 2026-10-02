@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   actualizarInformacionAdicional,
   descargarDocumentos,
+  descargarListadoAprobados,
   finalizarDocumentacion,
   listarDocentes,
   obtenerChecklist,
@@ -12,11 +13,22 @@ import { requireAuth, requireRole } from "@/middlewares/auth.middleware";
 
 export const docentesRouter = Router();
 
+// SAC ya no tiene acceso al listado de docentes (2026-10-02) — solo ve la
+// autorización de notificación electrónica vía la bandeja de documentos
+// (ver documentos.routes.ts).
 docentesRouter.get(
   "/",
   requireAuth,
-  requireRole("SAC", "TALENTO_HUMANO", "SUPER_USUARIO", "GESTOR_DOCUMENTAL"),
+  requireRole("TALENTO_HUMANO", "SUPER_USUARIO", "GESTOR_DOCUMENTAL"),
   asyncHandler(async (req, res) => listarDocentes(req, res)),
+);
+
+// Tiene que ir antes de "/:id" — si no, Express la confunde con un id.
+docentesRouter.get(
+  "/listado-aprobados",
+  requireAuth,
+  requireRole("TALENTO_HUMANO", "SUPER_USUARIO", "GESTOR_DOCUMENTAL"),
+  asyncHandler(async (req, res) => descargarListadoAprobados(req, res)),
 );
 
 // El control de acceso fino (propio docente / revisor completo / gestor documental
@@ -36,6 +48,6 @@ docentesRouter.patch(
 docentesRouter.get(
   "/:id/descargar",
   requireAuth,
-  requireRole("SAC", "TALENTO_HUMANO", "SUPER_USUARIO", "GESTOR_DOCUMENTAL"),
+  requireRole("TALENTO_HUMANO", "SUPER_USUARIO", "GESTOR_DOCUMENTAL"),
   asyncHandler(async (req, res) => descargarDocumentos(req, res)),
 );

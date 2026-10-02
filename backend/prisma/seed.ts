@@ -13,6 +13,7 @@ const TIPOS_DOCUMENTO: Array<{
   descripcion?: string;
   obligatorio?: boolean;
   esRequisitoRegistro?: boolean;
+  subidoPor?: "DOCENTE" | "TALENTO_HUMANO" | "GESTOR_DOCUMENTAL";
   orden: number;
 }> = [
   {
@@ -149,6 +150,7 @@ const TIPOS_DOCUMENTO: Array<{
     codigo: "EXAMEN_MEDICO_OCUPACIONAL",
     nombre: "Examen médico ocupacional de ingreso",
     descripcion: "No tiene costo. No debe presentarse en ayunas. Debe realizarse en una IPS autorizada por la SED.",
+    subidoPor: "TALENTO_HUMANO",
     orden: 22,
   },
   {
@@ -162,6 +164,7 @@ const TIPOS_DOCUMENTO: Array<{
     codigo: "ACTA_DE_POSESION",
     nombre: "Acta de posesión",
     descripcion: "Documento entregado directamente en la Secretaría de Educación del Magdalena.",
+    subidoPor: "GESTOR_DOCUMENTAL",
     orden: 24,
   },
 ];
@@ -175,6 +178,7 @@ async function main() {
         descripcion: tipo.descripcion ?? null,
         obligatorio: tipo.obligatorio ?? true,
         esRequisitoRegistro: tipo.esRequisitoRegistro ?? false,
+        subidoPor: tipo.subidoPor ?? "DOCENTE",
         orden: tipo.orden,
       },
       create: {
@@ -183,6 +187,7 @@ async function main() {
         descripcion: tipo.descripcion,
         obligatorio: tipo.obligatorio ?? true,
         esRequisitoRegistro: tipo.esRequisitoRegistro ?? false,
+        subidoPor: tipo.subidoPor ?? "DOCENTE",
         orden: tipo.orden,
       },
     });

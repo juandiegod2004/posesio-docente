@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError } from "@/lib/AppError";
 import { URL_LOGIN } from "@/lib/emailTemplate";
 import { eliminarArchivoDocumento, obtenerUrlFirmada, subirArchivoDocumento } from "@/lib/storage";
+import { tieneDocumentosDocenteAprobados } from "@/lib/checklist";
 import { prisma } from "@/lib/prisma";
 import { notificar } from "@/services/notificaciones.service";
 
@@ -20,18 +21,35 @@ const listarDocumentosQuerySchema = z.object({
  * Bandeja de validación: lista plana de documentos de TODOS los docentes
  * (no de uno solo, a diferencia de /api/docentes/:id/checklist), con
  * búsqueda por nombre/cédula del docente o nombre del tipo de documento, y
- * filtro por estado. Para SAC/TALENTO_HUMANO/SUPER_USUARIO sin restricción;
- * GESTOR_DOCUMENTAL solo ve documentos de docentes con documentacionAprobada=true
- * (ver nota de rol en docentes.controller.ts).
+ * filtro por estado. Para TALENTO_HUMANO/SUPER_USUARIO sin restricción.
+ * SAC (2026-10-02) solo ve filas del documento de autorización de notificación
+ * electrónica — nunca el resto del checklist de ningún docente. GESTOR_DOCUMENTAL
+ * solo ve documentos de docentes con el checklist normal ya aprobado (ver
+ * tieneDocumentosDocenteAprobados en docentes.controller.ts).
  */
 export const listarDocumentos = async (req: Request, res: Response) => {
   const { estado, q } = listarDocumentosQuerySchema.parse(req.query);
+  const esSAC = req.usuario?.rol === "SAC";
   const esGestorDocumental = req.usuario?.rol === "GESTOR_DOCUMENTAL";
+
+  let docenteIdsVisiblesParaGestorDocumental: string[] | undefined;
+  if (esGestorDocumental) {
+    const totalTiposDocente = await prisma.tipoDocumento.count({ where: { subidoPor: "DOCENTE" } });
+    const aprobadosPorDocente = await prisma.documento.groupBy({
+      by: ["docenteId"],
+      where: { estado: "APROBADO", tipoDocumento: { subidoPor: "DOCENTE" } },
+      _count: { _all: true },
+    });
+    docenteIdsVisiblesParaGestorDocumental = aprobadosPorDocente
+      .filter((g) => g._count._all === totalTiposDocente)
+      .map((g) => g.docenteId);
+  }
 
   const documentos = await prisma.documento.findMany({
     where: {
       estado,
-      ...(esGestorDocumental && { docente: { documentacionAprobada: true } }),
+      ...(esSAC && { tipoDocumento: { esRequisitoRegistro: true } }),
+      ...(esGestorDocumental && { docenteId: { in: docenteIdsVisiblesParaGestorDocumental ?? [] } }),
       ...(q && {
         OR: [
           { docente: { usuario: { nombres: { contains: q, mode: "insensitive" } } } },
@@ -76,7 +94,13 @@ export const listarDocumentos = async (req: Request, res: Response) => {
   );
 };
 
-/** El docente sube (o vuelve a subir tras un rechazo) un documento del checklist. */
+/**
+ * Sube (o vuelve a subir tras un rechazo) un documento del checklist. El dueño
+ * depende de `tipoDocumento.subidoPor` (ver enum SubidoPor): el docente sube los
+ * 23 normales + la autorización; TALENTO_HUMANO sube el examen médico
+ * ocupacional y GESTOR_DOCUMENTAL el acta de posesión (2026-10-02) — ninguno de
+ * los dos lo sube el propio docente.
+ */
 export const subirDocumento = async (req: Request, res: Response) => {
   const { docenteId, tipoDocumentoId } = subirDocumentoSchema.parse(req.body);
 
@@ -96,35 +120,50 @@ export const subirDocumento = async (req: Request, res: Response) => {
   });
   if (!docente) throw new AppError(404, "Docente no encontrado");
 
-  if (req.usuario?.id !== docente.usuarioId) {
-    throw new AppError(403, "Solo el propio docente puede subir sus documentos");
-  }
-
-  // Módulo de carga de documentos bloqueado hasta completar la información
-  // adicional (fecha/lugar de nacimiento, expedición de cédula, etc.) — aplica a
-  // CUALQUIER documento, incluida la autorización de notificación electrónica.
-  // Los docentes que ya existían antes de este requisito quedan eximidos
-  // (debeCompletarInformacionAdicional=false, ver migración informacion_adicional_docente).
-  if (docente.debeCompletarInformacionAdicional && !docente.informacionAdicionalCompleta) {
-    throw new AppError(403, "Debes completar tu información adicional antes de subir documentos.");
-  }
-
   const tipoDocumento = await prisma.tipoDocumento.findUnique({ where: { id: tipoDocumentoId } });
   if (!tipoDocumento) throw new AppError(404, "Tipo de documento no encontrado");
 
-  // La autorización de notificación electrónica desbloquea el resto del checklist
-  // apenas se sube (ver más abajo) — no espera aprobación de un validador. Si este
-  // chequeo dispara es porque nunca se subió, o porque se subió y luego un validador
-  // la rechazó (lo que resetea registroCompletado a false, ver validarDocumento).
-  if (!tipoDocumento.esRequisitoRegistro && !docente.registroCompletado) {
-    const autorizacion = await prisma.documento.findFirst({
-      where: { docenteId, tipoDocumento: { esRequisitoRegistro: true } },
-      select: { estado: true },
-    });
-    if (autorizacion?.estado === "RECHAZADO") {
-      throw new AppError(403, "Tu autorización de notificación electrónica fue rechazada. Corrígela antes de continuar.");
+  if (tipoDocumento.subidoPor === "DOCENTE") {
+    if (req.usuario?.id !== docente.usuarioId) {
+      throw new AppError(403, "Solo el propio docente puede subir sus documentos");
     }
-    throw new AppError(403, "Debes subir primero la autorización de notificación electrónica.");
+
+    // Módulo de carga de documentos bloqueado hasta completar la información
+    // adicional (fecha/lugar de nacimiento, expedición de cédula, etc.) — aplica a
+    // CUALQUIER documento, incluida la autorización de notificación electrónica.
+    // Los docentes que ya existían antes de este requisito quedan eximidos
+    // (debeCompletarInformacionAdicional=false, ver migración informacion_adicional_docente).
+    if (docente.debeCompletarInformacionAdicional && !docente.informacionAdicionalCompleta) {
+      throw new AppError(403, "Debes completar tu información adicional antes de subir documentos.");
+    }
+
+    // La autorización de notificación electrónica desbloquea el resto del checklist
+    // apenas se sube (ver más abajo) — no espera aprobación de un validador. Si este
+    // chequeo dispara es porque nunca se subió, o porque se subió y luego un validador
+    // la rechazó (lo que resetea registroCompletado a false, ver validarDocumento).
+    if (!tipoDocumento.esRequisitoRegistro && !docente.registroCompletado) {
+      const autorizacion = await prisma.documento.findFirst({
+        where: { docenteId, tipoDocumento: { esRequisitoRegistro: true } },
+        select: { estado: true },
+      });
+      if (autorizacion?.estado === "RECHAZADO") {
+        throw new AppError(403, "Tu autorización de notificación electrónica fue rechazada. Corrígela antes de continuar.");
+      }
+      throw new AppError(403, "Debes subir primero la autorización de notificación electrónica.");
+    }
+  } else {
+    // Examen médico ocupacional (TALENTO_HUMANO) / acta de posesión
+    // (GESTOR_DOCUMENTAL): el docente nunca los sube. Solo el rol correspondiente
+    // (+ SUPER_USUARIO), y solo una vez el resto del checklist del docente (todo
+    // lo que sube él mismo) ya está APROBADO.
+    const rolDueño = tipoDocumento.subidoPor;
+    if (req.usuario?.rol !== rolDueño && req.usuario?.rol !== "SUPER_USUARIO") {
+      const nombreRol = rolDueño === "TALENTO_HUMANO" ? "Talento Humano" : "Gestor Documental";
+      throw new AppError(403, `Este documento lo sube ${nombreRol} — el docente no puede subirlo.`);
+    }
+    if (!(await tieneDocumentosDocenteAprobados(docenteId))) {
+      throw new AppError(403, "Todavía no se puede subir este documento: el resto del checklist del docente debe estar aprobado primero.");
+    }
   }
 
   const documentoExistente = await prisma.documento.findUnique({
@@ -196,22 +235,27 @@ export const subirDocumento = async (req: Request, res: Response) => {
   res.status(201).json(documento);
 };
 
-/** Devuelve una URL firmada temporal para visualizar el archivo de un documento. */
+/**
+ * Devuelve una URL firmada temporal para visualizar el archivo de un documento.
+ * SAC (2026-10-02) solo puede ver el documento de autorización de notificación
+ * electrónica — nunca el resto del checklist de ningún docente.
+ */
 export const obtenerUrlDocumento = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   const documento = await prisma.documento.findUnique({
-    include: { docente: true },
+    include: { docente: true, tipoDocumento: { select: { esRequisitoRegistro: true } } },
     where: { id },
   });
   if (!documento) throw new AppError(404, "Documento no encontrado");
 
   const esPropio = req.usuario?.id === documento.docente.usuarioId;
-  const esRevisorCompleto = req.usuario && ["SAC", "TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
-  // GESTOR_DOCUMENTAL solo accede a documentos de docentes con TODA su
-  // documentación aprobada (ver nota de rol en docentes.controller.ts).
-  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && documento.docente.documentacionAprobada;
-  if (!esPropio && !esRevisorCompleto && !esGestorDocumentalConAcceso) {
+  const esSACConAcceso = req.usuario?.rol === "SAC" && documento.tipoDocumento.esRequisitoRegistro;
+  const esRevisorCompleto = req.usuario && ["TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
+  // GESTOR_DOCUMENTAL solo accede a documentos de docentes con el checklist
+  // normal ya aprobado (ver tieneDocumentosDocenteAprobados).
+  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && (await tieneDocumentosDocenteAprobados(documento.docenteId));
+  if (!esPropio && !esSACConAcceso && !esRevisorCompleto && !esGestorDocumentalConAcceso) {
     throw new AppError(403, "No tienes acceso a este documento");
   }
 
@@ -229,10 +273,12 @@ const validarDocumentoSchema = z.object({
 });
 
 /**
- * SAC y Talento Humano aprueban/rechazan documentos, cada uno en su carril:
- * SAC solo la autorización de notificación electrónica (esRequisitoRegistro=true)
- * — es lo que habilita al docente a subir el resto —, Talento Humano solo el resto
- * del checklist. SUPER_USUARIO no tiene esta restricción (control total). Deja
+ * SAC, Talento Humano y Gestor Documental aprueban/rechazan documentos, cada uno
+ * en su carril (ver enum SubidoPor): SAC solo la autorización de notificación
+ * electrónica (esRequisitoRegistro=true), Gestor Documental solo el acta de
+ * posesión (subidoPor=GESTOR_DOCUMENTAL, 2026-10-02), Talento Humano el resto
+ * del checklist (incluido el examen médico ocupacional, que también sube él
+ * mismo). SUPER_USUARIO no tiene esta restricción (control total). Deja
  * trazabilidad en Validacion sin importar quién validó.
  */
 export const validarDocumento = async (req: Request, res: Response) => {
@@ -250,11 +296,20 @@ export const validarDocumento = async (req: Request, res: Response) => {
   if (!documento) throw new AppError(404, "Documento no encontrado");
 
   const rol = req.usuario!.rol;
+  const esActaDePosesion = documento.tipoDocumento.subidoPor === "GESTOR_DOCUMENTAL";
   if (rol === "SAC" && !documento.tipoDocumento.esRequisitoRegistro) {
     throw new AppError(403, "SAC solo puede validar la autorización de notificación electrónica — el resto del checklist es competencia de Talento Humano");
   }
-  if (rol === "TALENTO_HUMANO" && documento.tipoDocumento.esRequisitoRegistro) {
-    throw new AppError(403, "Talento Humano no valida la autorización de notificación electrónica — eso es competencia exclusiva de SAC");
+  if (rol === "TALENTO_HUMANO" && (documento.tipoDocumento.esRequisitoRegistro || esActaDePosesion)) {
+    throw new AppError(
+      403,
+      esActaDePosesion
+        ? "Talento Humano no valida el acta de posesión — eso es competencia exclusiva de Gestor Documental"
+        : "Talento Humano no valida la autorización de notificación electrónica — eso es competencia exclusiva de SAC",
+    );
+  }
+  if (rol === "GESTOR_DOCUMENTAL" && !esActaDePosesion) {
+    throw new AppError(403, "Gestor Documental solo puede validar el acta de posesión");
   }
 
   const validadorId = req.usuario!.id;

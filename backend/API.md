@@ -25,24 +25,35 @@ Si el token falta, es inválido, o el usuario está inactivo (baneado), la API r
 
 `SUPER_USUARIO` | `SAC` | `TALENTO_HUMANO` | `DOCENTE` | `GESTOR_DOCUMENTAL`
 
-`SAC` y `TALENTO_HUMANO` (antes un único rol `VALIDADOR`, dividido 2026-09-30) son las dos oficinas de la secretaría que validan documentos, cada una en su carril — ninguna puede validar lo de la otra (`PATCH /api/documentos/:id/validar` responde `403` si lo intenta):
-- **`SAC`**: valida EXCLUSIVAMENTE la autorización de notificación electrónica (`esRequisitoRegistro: true`). El docente se desbloquea para el resto del checklist apenas la sube (no espera esta aprobación) — si SAC la rechaza, el docente se re-bloquea hasta corregirla. Recibe los correos de "nuevo registro" y "autorización pendiente de revisión".
-- **`TALENTO_HUMANO`**: valida el resto de los 24 documentos del checklist normal. Recibe el correo de "documentación lista para revisión" (cuando el docente termina de subir los 24).
-- **`SUPER_USUARIO`** no tiene esta restricción: puede validar cualquier documento (control total), y se le notifica de los 3 eventos.
-- Ambos (`SAC`/`TALENTO_HUMANO`) comparten el mismo acceso de solo-lectura a todos los docentes/documentos (listado, checklist, perfil, descarga) — la separación es solo sobre qué pueden *aprobar* y qué correos reciben, no sobre qué pueden *ver*.
+Un `SUPER_USUARIO` puede cambiar el rol de cualquier cuenta de personal interno ya creada — ver `PATCH /api/usuarios/:id/rol` más abajo.
+
+**Quién sube cada tipo de documento** (campo `TipoDocumento.subidoPor`, nuevo 2026-10-02): el docente sube los 23 normales + la autorización de notificación electrónica (`subidoPor: DOCENTE`, el default). Dos excepciones, nunca las sube el docente:
+- `EXAMEN_MEDICO_OCUPACIONAL` → lo sube `TALENTO_HUMANO`.
+- `ACTA_DE_POSESION` → lo sube `GESTOR_DOCUMENTAL`.
+
+Ambos se habilitan recién cuando el resto de los documentos del docente (todo lo `subidoPor: DOCENTE`) ya está `APROBADO` — antes de eso, `POST /api/documentos` responde `403` tanto a Talento Humano como a Gestor Documental si intentan subirlos. El chequeo de "¿ya subió todo?" de `PATCH /api/docentes/:id/finalizar` ignora estos 2 — el docente puede finalizar con solo sus 23 subidos, sin esperar a que Talento Humano/Gestor Documental suban el examen/acta.
+
+`SAC`, `TALENTO_HUMANO` y `GESTOR_DOCUMENTAL` validan documentos, cada uno en su carril — ninguno puede validar lo de otro (`PATCH /api/documentos/:id/validar` responde `403` si lo intenta):
+- **`SAC`**: valida EXCLUSIVAMENTE la autorización de notificación electrónica (`esRequisitoRegistro: true`). El docente se desbloquea para el resto del checklist apenas la sube (no espera esta aprobación) — si SAC la rechaza, el docente se re-bloquea hasta corregirla. Recibe los correos de "nuevo registro" y "autorización pendiente de revisión". **Acceso restringido (2026-10-02):** SAC ya NO tiene acceso a `GET /api/docentes` (listado), `GET /api/docentes/:id` (perfil), `GET /api/docentes/:id/checklist` ni `GET /api/docentes/:id/descargar` (zip) — en la bandeja `GET /api/documentos` solo ve filas del documento de autorización (de cualquier docente), y `GET /api/documentos/:id/url` solo le funciona para ese tipo de documento. No ve el resto del checklist de ningún docente.
+- **`TALENTO_HUMANO`**: valida el resto de los 24 documentos del checklist normal (incluido el examen médico ocupacional, que también sube él mismo). Recibe el correo de "documentación lista para revisión" (cuando el docente termina de subir sus 23).
+- **`GESTOR_DOCUMENTAL`**: valida EXCLUSIVAMENTE el acta de posesión (que también sube él mismo) — ver nota de rol más abajo.
+- **`SUPER_USUARIO`** no tiene esta restricción: puede validar y subir cualquier documento (control total).
+- `TALENTO_HUMANO` conserva acceso de solo-lectura sin restricción a todos los docentes/documentos (listado, checklist, perfil, descarga) — a diferencia de SAC.
 
 El rol `ADMINISTRATIVO` existió hasta 2026-09-30 y fue eliminado (no cumplía ninguna función distinta de `VALIDADOR`/`SUPER_USUARIO` — decisión explícita del usuario). No confundir con `TipoPosesion.ADMINISTRATIVO` (tipo de aspirante, campo `Docente.tipoPosesion`), que sigue existiendo y es algo completamente distinto — ver más abajo.
 
 `GESTOR_DOCUMENTAL` (antes `PRE_ACTA`, renombrado 2026-09-30) es un rol de acceso
-**restringido**: solo puede ver el perfil y los documentos de un docente cuando
-`documentacionAprobada = true` (sus 25 documentos ya fueron aprobados). Mientras un
-docente esté en proceso, este rol no tiene ninguna visibilidad sobre él — no
-aparece en `GET /api/docentes`, `GET /api/documentos` lo excluye, y el detalle de
-ese docente responde `403`. Tampoco recibe las notificaciones de "nuevo registro",
-"documento pendiente de revisión" ni "documentación lista para revisión" (no puede
-actuar sobre nada de eso). No puede validar/rechazar documentos (`PATCH
-/api/documentos/:id/validar` sigue exclusivo de `SAC`/`TALENTO_HUMANO`/`SUPER_USUARIO`,
-cada uno en su carril — ver nota de roles arriba).
+**restringido**. **Condición de acceso actualizada (2026-10-02):** ve/actúa sobre un
+docente cuando el resto de sus documentos (todo lo `subidoPor: DOCENTE`, es decir
+el checklist normal sin contar examen médico/acta) ya está `APROBADO` — ya NO
+espera a `documentacionAprobada` (los 25 completos), porque eso era circular: él
+mismo es quien sube el acta de posesión, uno de esos 25. Mientras eso no se cumpla,
+este rol no tiene ninguna visibilidad sobre el docente — no aparece en `GET
+/api/docentes`, `GET /api/documentos` lo excluye, y el detalle de ese docente
+responde `403`. Tampoco recibe las notificaciones de "nuevo registro", "documento
+pendiente de revisión" ni "documentación lista para revisión" (no puede actuar
+sobre nada de eso). Sí puede validar/rechazar un tipo de documento: el acta de
+posesión, que también sube él mismo (ver `PATCH /api/documentos/:id/validar`).
 
 ## Formato de errores
 
@@ -230,6 +241,17 @@ Si no se manda `passwordTemporal`, se genera una automáticamente. Respuesta:
 { "passwordTemporal": "2UVsWJTJUBcM" }
 ```
 
+### `PATCH /api/usuarios/:id/rol` (nuevo, 2026-10-02)
+
+Cambia el rol de una cuenta de personal interno ya creada (nunca de un Docente).
+
+```json
+// Body
+{ "rol": "TALENTO_HUMANO" } // SAC | TALENTO_HUMANO | GESTOR_DOCUMENTAL | SUPER_USUARIO
+```
+
+Respuesta: el `Usuario` actualizado. Errores: `400` si intentas cambiar tu propio rol (mismo candado que `PATCH /:id/activo` — evita que un Super Usuario se bloquee el acceso por error), `400` si el `id` corresponde a un Docente (ese rol no se toca desde acá), `404` si no existe. No hay correo especial, solo notificación in-app genérica.
+
 El Super Usuario debe comunicarle esta clave al usuario por fuera de la plataforma (no hay email de por medio). La cuenta queda con `debeCambiarPassword: true` — la próxima vez que inicie sesión, el frontend debe bloquear todo hasta que la cambie por una propia vía `POST /api/auth/cambiar-password`.
 
 > Nota: no hay endpoint de bootstrap para el **primer** Super Usuario — se crea por línea de comandos con `npm run crear:super-usuario -- <cedula> <nombres> <apellidos> <email> <password>` (una sola vez por entorno).
@@ -240,9 +262,15 @@ El Super Usuario debe comunicarle esta clave al usuario por fuera de la platafor
 
 ### `GET /api/docentes`
 
-Requiere rol `SAC`, `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL`. Lista todos los docentes con un resumen de avance. Trae `usuario.id`, útil para restablecer su clave vía `PATCH /api/usuarios/:id/clave` (ver arriba) sin tener que entrar al detalle de cada uno.
+Requiere rol `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL` (**`SAC` ya NO tiene acceso**, 2026-10-02 — ver nota de rol arriba). Lista todos los docentes con un resumen de avance. Trae `usuario.id`, útil para restablecer su clave vía `PATCH /api/usuarios/:id/clave` (ver arriba) sin tener que entrar al detalle de cada uno.
 
-**`GESTOR_DOCUMENTAL` solo ve en esta lista a los docentes con `documentacionAprobada: true`** — mientras un docente esté en proceso, no aparece acá para este rol (los demás roles ven a todos, sin filtrar).
+**`GESTOR_DOCUMENTAL` solo ve en esta lista a los docentes con el checklist normal ya aprobado** (todo lo `subidoPor: DOCENTE`, ver nota de rol arriba) — mientras eso no se cumpla, no aparece acá para este rol (los demás roles ven a todos, sin filtrar).
+
+### `GET /api/docentes/listado-aprobados` (nuevo, 2026-10-02)
+
+Requiere rol `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL`. Descarga un archivo **Excel (.xlsx)** con el listado de docentes cuyo proceso de posesión está 100% completo (`documentacionAprobada: true` — los 25 documentos aprobados, incluidos examen médico y acta de posesión). Columnas: nombre completo, cédula, tipo de posesión (Docente/Administrativo), fecha de aprobación. Ordenado por fecha de aprobación ascendente.
+
+Respuesta: binario `.xlsx` (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="docentes-autorizados.xlsx"`).
 
 ```json
 [
@@ -268,7 +296,7 @@ Requiere rol `SAC`, `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL`. Lis
 
 Perfil completo del docente: todos los datos que llenó al registrarse y en el formulario de información adicional (tipo y número de documento, dirección, sexo, fecha de nacimiento, país/departamento/ciudad de nacimiento, cantidad de hijos, fecha y lugar de expedición de la cédula, estado civil, tipo de sangre). No incluye el checklist de documentos — para eso usa `GET /api/docentes/:id/checklist`.
 
-Acceso: el propio docente (dueño de ese `id`), `SAC`/`TALENTO_HUMANO`/`SUPER_USUARIO` sin restricción, o `GESTOR_DOCUMENTAL` **solo si `documentacionAprobada: true`** (si no, `403`).
+Acceso: el propio docente (dueño de ese `id`), `TALENTO_HUMANO`/`SUPER_USUARIO` sin restricción, o `GESTOR_DOCUMENTAL` **solo si el checklist normal ya está aprobado** (ver nota de rol arriba; si no, `403`). **`SAC` ya NO tiene acceso a este endpoint** (2026-10-02).
 
 Respuesta real (todos los campos, `null` cuando el docente no llenó ese dato):
 
@@ -310,7 +338,7 @@ Los mismos nombres de campo que `PATCH /:id/informacion-adicional` recibe (`sexo
 
 ### `GET /api/docentes/:id/checklist`
 
-El propio docente (dueño de ese `id`) o cualquier rol revisor (`SAC`/`TALENTO_HUMANO`/`SUPER_USUARIO`) puede verlo sin restricción; `GESTOR_DOCUMENTAL` solo si `documentacionAprobada: true` (mismo criterio que `GET /api/docentes/:id`). Devuelve los **25** tipos de documento (los 24 del proceso + `AUTORIZACION_NOTIFICACION_ELECTRONICA` como primer ítem, `orden: 0`) con el estado del documento del docente en cada uno (o `null` si no ha subido nada). Este último ya no se sube durante el registro (ver `POST /api/auth/registro`) — el docente lo sube desde aquí, como cualquier otro, justo después de loguearse por primera vez. **Subirlo marca `registroCompletado = true` de inmediato** (cambio 2026-09-30, revierte el cambio de 2026-09-29) — el docente no espera a que `SAC` lo apruebe para seguir con el resto, ver `POST /api/documentos` y `PATCH /api/documentos/:id/validar`.
+El propio docente (dueño de ese `id`) o `TALENTO_HUMANO`/`SUPER_USUARIO` puede verlo sin restricción; `GESTOR_DOCUMENTAL` solo si el checklist normal ya está aprobado (mismo criterio que `GET /api/docentes/:id`). **`SAC` ya NO tiene acceso** (2026-10-02). Devuelve los **25** tipos de documento (los 24 del proceso + `AUTORIZACION_NOTIFICACION_ELECTRONICA` como primer ítem, `orden: 0`) con el estado del documento del docente en cada uno (o `null` si no ha subido nada). Este último ya no se sube durante el registro (ver `POST /api/auth/registro`) — el docente lo sube desde aquí, como cualquier otro, justo después de loguearse por primera vez. **Subirlo marca `registroCompletado = true` de inmediato** (cambio 2026-09-30, revierte el cambio de 2026-09-29) — el docente no espera a que `SAC` lo apruebe para seguir con el resto, ver `POST /api/documentos` y `PATCH /api/documentos/:id/validar`.
 
 ```json
 {
@@ -331,9 +359,9 @@ Errores: `403` si no eres el dueño ni un rol revisor, `404` si el docente no ex
 
 ### `PATCH /api/docentes/:id/finalizar`
 
-Solo el propio docente (dueño de ese `id`), sin body. Marca que ya terminó de subir los 25 documentos del checklist y notifica a `TALENTO_HUMANO` + `SUPER_USUARIO` (cuentas activas — ni `SAC` ni `GESTOR_DOCUMENTAL`, ver nota de roles arriba: terminar el checklist es competencia de Talento Humano, no de SAC) para que no tengan que estar chequeando el progreso manualmente — notificación in-app (aparece en `GET /api/notificaciones`) + email.
+Solo el propio docente (dueño de ese `id`), sin body. Marca que ya terminó de subir **sus** documentos del checklist y notifica a `TALENTO_HUMANO` + `SUPER_USUARIO` (cuentas activas — ni `SAC` ni `GESTOR_DOCUMENTAL`, ver nota de roles arriba: terminar el checklist es competencia de Talento Humano, no de SAC) para que no tengan que estar chequeando el progreso manualmente — notificación in-app (aparece en `GET /api/notificaciones`) + email.
 
-El gatillo es **"subió todos y ninguno quedó rechazado"**, no "le aprobaron todos": cuenta cualquier documento subido cuyo `estado` sea `PENDIENTE`/`EN_REVISION`/`APROBADO` — `ARCHIVO_ELIMINADO` y `RECHAZADO` cuentan como faltante.
+El gatillo es **"subió todos los suyos y ninguno quedó rechazado"**, no "le aprobaron todos": cuenta cualquier documento subido cuyo `estado` sea `PENDIENTE`/`EN_REVISION`/`APROBADO` — `ARCHIVO_ELIMINADO` y `RECHAZADO` cuentan como faltante. **Ignora `EXAMEN_MEDICO_OCUPACIONAL` y `ACTA_DE_POSESION`** (cambio 2026-10-02, campo `subidoPor` — ver nota de rol arriba): esos 2 no los sube el docente, así que no bloquean este botón aunque sigan en "No subido".
 
 Si falta alguno (sin subir, eliminado del bucket, o rechazado sin corregir), `400`:
 ```json
@@ -346,9 +374,9 @@ Si pasa la validación, `200` con el `Docente` actualizado (`documentacionFinali
 
 ### `GET /api/docentes/:id/descargar`
 
-Requiere rol `SAC`, `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL`. Descarga un `.zip` con los documentos **APROBADOS** de ese docente — pensado para respaldo interno una vez su proceso de posesión está completo. No incluye documentos pendientes, en revisión, rechazados, ni marcados `ARCHIVO_ELIMINADO` — silenciosamente, sin ninguna nota sobre lo que falta (a propósito: no es un reporte de completitud, es un respaldo de lo ya aprobado).
+Requiere rol `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL` (**`SAC` ya NO tiene acceso**, 2026-10-02). Descarga un `.zip` con los documentos **APROBADOS** de ese docente — pensado para respaldo interno una vez su proceso de posesión está completo. No incluye documentos pendientes, en revisión, rechazados, ni marcados `ARCHIVO_ELIMINADO` — silenciosamente, sin ninguna nota sobre lo que falta (a propósito: no es un reporte de completitud, es un respaldo de lo ya aprobado).
 
-**`GESTOR_DOCUMENTAL` solo puede usar este endpoint si `documentacionAprobada: true`** (si no, `403`) — los demás roles no tienen esta restricción y pueden descargar el respaldo parcial de un docente en proceso.
+**`GESTOR_DOCUMENTAL` solo puede usar este endpoint si el checklist normal ya está aprobado** (si no, `403`) — `TALENTO_HUMANO`/`SUPER_USUARIO` no tienen esta restricción y pueden descargar el respaldo parcial de un docente en proceso.
 
 No es JSON: la respuesta es el archivo binario directo, con:
 ```
@@ -412,7 +440,7 @@ Los ~1123 municipios de Colombia (mismo dataset DIVIPOLA). `departamentoId` opci
 
 Requiere rol `SAC`, `TALENTO_HUMANO`, `SUPER_USUARIO` o `GESTOR_DOCUMENTAL`. Bandeja de validación: lista plana de documentos de **todos** los docentes (no de uno solo — para eso usa `GET /api/docentes/:id/checklist`). Soporta query params opcionales:
 
-**`GESTOR_DOCUMENTAL` solo ve acá documentos de docentes con `documentacionAprobada: true`** (los demás roles ven todo, sin filtrar).
+**`SAC` (2026-10-02) solo ve acá filas del documento de autorización de notificación electrónica** (`esRequisitoRegistro: true`), de cualquier docente — nunca el resto del checklist. **`GESTOR_DOCUMENTAL` solo ve documentos de docentes con el checklist normal ya aprobado** (ver nota de rol arriba). `TALENTO_HUMANO`/`SUPER_USUARIO` ven todo, sin filtrar.
 
 | Query param | Valores | Descripción |
 |---|---|---|
@@ -445,21 +473,23 @@ Para el archivo en sí (columna "Archivo radicado" con link de descarga/vista), 
 
 ### `POST /api/documentos`
 
-Requiere rol `DOCENTE`. Sube (o vuelve a subir tras un rechazo) un documento del checklist. `multipart/form-data`:
+Requiere rol `DOCENTE`, `TALENTO_HUMANO`, `GESTOR_DOCUMENTAL` o `SUPER_USUARIO` (ampliado 2026-10-02 — antes solo `DOCENTE`). Sube (o vuelve a subir tras un rechazo) un documento del checklist. `multipart/form-data`:
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `docenteId` | string (uuid) | El `docente.id` del usuario autenticado |
+| `docenteId` | string (uuid) | El `docente.id` del docente dueño del checklist (no cambia aunque quien suba sea personal interno) |
 | `tipoDocumentoId` | string (uuid) | Uno de los ids de `GET /api/tipos-documento` (para completar el registro, usa el que tenga `codigo: "AUTORIZACION_NOTIFICACION_ELECTRONICA"`) |
 | `archivo` | file | Solo PDF, máx. 10MB (se valida mimetype y también la firma real del archivo) |
 
-El documento queda en estado `EN_REVISION`. Si el `tipoDocumento` es el de autorización de notificación electrónica, además de quedar `EN_REVISION` se marca `Docente.registroCompletado = true` **en el mismo request** (cambio 2026-09-30, revierte el cambio de 2026-09-29 — ver más abajo) y se notifica (in-app + email) a `SAC`/`SUPER_USUARIO` para que la revisen, aunque el docente ya puede seguir subiendo el resto del checklist sin esperar esa revisión.
+**Quién puede subir cada tipo depende de `TipoDocumento.subidoPor`** (2026-10-02, ver nota de rol arriba): `DOCENTE` (23 normales + autorización) solo lo sube el propio docente dueño (`403` si otro usuario lo intenta). `EXAMEN_MEDICO_OCUPACIONAL` (`subidoPor: TALENTO_HUMANO`) y `ACTA_DE_POSESION` (`subidoPor: GESTOR_DOCUMENTAL`) el docente NO puede subirlos — solo el rol correspondiente (+ `SUPER_USUARIO`), y solo cuando el resto del checklist del docente (todo `subidoPor: DOCENTE`) ya está `APROBADO`; si no, `403` con `"Todavía no se puede subir este documento: el resto del checklist del docente debe estar aprobado primero."`.
+
+El documento queda en estado `EN_REVISION`. Si el `tipoDocumento` es el de autorización de notificación electrónica, además de quedar `EN_REVISION` se marca `Docente.registroCompletado = true` **en el mismo request** (cambio 2026-09-30, revierte el cambio de 2026-09-29 — ver más abajo) y se notifica (in-app + email) a `SAC`/`SUPER_USUARIO` para que la revisen, aunque el docente ya puede seguir subiendo el resto del checklist sin esperar esa revisión. Para examen médico/acta no hay notificación especial al subirlos — el validador correspondiente (`TALENTO_HUMANO`/`GESTOR_DOCUMENTAL`) ya sabe que los subió él mismo.
 
 Respuesta `201`: el `Documento` creado/actualizado. Errores: `403` si el docente no es el dueño, `404` si no existe el docente o el tipo de documento, `400` si el archivo no es PDF (`"Solo se aceptan archivos PDF"` si el mimetype declarado no es `application/pdf`, o `"El archivo no es un PDF válido"` si el mimetype dice PDF pero el contenido no empieza con la firma `%PDF-`).
 
 #### Carga de documentos bloqueada
 
-Dos precondiciones, ambas devuelven `403` (no `400`, porque no es un error del archivo sino de secuencia/estado):
+Aplican solo a documentos `subidoPor: DOCENTE` (ver nota de rol arriba) — dos precondiciones, ambas devuelven `403` (no `400`, porque no es un error del archivo sino de secuencia/estado):
 
 1. **Información adicional incompleta**: si `docente.debeCompletarInformacionAdicional === true` y `docente.informacionAdicionalCompleta === false`, cualquier subida (incluida la autorización de notificación electrónica) devuelve `403` con `"Debes completar tu información adicional antes de subir documentos."`. Ver `PATCH /api/docentes/:id/informacion-adicional`. Los docentes con `debeCompletarInformacionAdicional === false` (los que ya existían antes de este feature) nunca chocan con esto.
 2. **Autorización de notificación electrónica pendiente**: para cualquier documento que NO sea `AUTORIZACION_NOTIFICACION_ELECTRONICA`, si `docente.registroCompletado === false`, `403` con uno de estos dos mensajes según el estado real de esa autorización:
@@ -468,11 +498,13 @@ Dos precondiciones, ambas devuelven `403` (no `400`, porque no es un error del a
 
    **Cambio 2026-09-30 (revierte el cambio de 2026-09-29):** `registroCompletado` vuelve a marcarse al **subir** el archivo (no al aprobarlo) — el docente ya no espera a que SAC revise la autorización para seguir con el resto del checklist. Si SAC la rechaza después, `registroCompletado` vuelve a `false` (re-bloqueando) hasta que la resuba corregida, momento en el que se vuelve a desbloquear automáticamente.
 
+Para `EXAMEN_MEDICO_OCUPACIONAL`/`ACTA_DE_POSESION` (`subidoPor != DOCENTE`) la precondición es otra — ver la tabla de arriba (resto del checklist del docente aprobado).
+
 **Frontend:** capturar estos `403` específicos (por el mensaje, ya que el código es el mismo que otros casos de ownership) y redirigir al paso correspondiente en vez de mostrar un error genérico — en la práctica no debería alcanzarse nunca si la UI sigue el orden correcto (información adicional → autorización → resto del checklist), pero sirve como defensa si alguien llama la API fuera de orden.
 
 ### `GET /api/documentos/:id/url`
 
-El dueño del documento o un rol revisor. Devuelve una URL firmada temporal (10 min) para ver/descargar el archivo desde Supabase Storage.
+El dueño del documento, `TALENTO_HUMANO`/`SUPER_USUARIO` sin restricción, `SAC` **solo si el documento es la autorización de notificación electrónica** (2026-10-02), o `GESTOR_DOCUMENTAL` si el checklist normal del docente ya está aprobado. Devuelve una URL firmada temporal (10 min) para ver/descargar el archivo desde Supabase Storage.
 
 ```json
 { "url": "https://.../storage/v1/object/sign/documentos-docentes/...?token=..." }
@@ -482,9 +514,9 @@ Error `410` si el documento está en estado `ARCHIVO_ELIMINADO` (ver abajo) — 
 
 ### `PATCH /api/documentos/:id/validar`
 
-Requiere rol `SAC`, `TALENTO_HUMANO` o `SUPER_USUARIO`. Aprueba o rechaza un documento; deja registro en `Validacion` (trazabilidad) y dispara una notificación in-app + email al docente.
+Requiere rol `SAC`, `TALENTO_HUMANO`, `GESTOR_DOCUMENTAL` (ampliado 2026-10-02) o `SUPER_USUARIO`. Aprueba o rechaza un documento; deja registro en `Validacion` (trazabilidad) y dispara una notificación in-app + email al docente.
 
-**División SAC / Talento Humano (2026-09-30):** cada rol solo puede validar su tipo de documento — `SAC` únicamente la autorización de notificación electrónica (`esRequisitoRegistro: true`), `TALENTO_HUMANO` únicamente el resto del checklist (`esRequisitoRegistro: false`). Si cualquiera intenta validar el tipo que no le corresponde, `403` con un mensaje explícito ("SAC solo puede validar la autorización..." / "Talento Humano no valida la autorización..."). `SUPER_USUARIO` no tiene esta restricción, puede validar cualquier documento.
+**División por carril (SAC / Talento Humano / Gestor Documental):** cada rol solo puede validar su tipo de documento — `SAC` únicamente la autorización de notificación electrónica (`esRequisitoRegistro: true`), `GESTOR_DOCUMENTAL` únicamente el acta de posesión (`subidoPor: GESTOR_DOCUMENTAL`, nuevo 2026-10-02), `TALENTO_HUMANO` el resto del checklist (incluido el examen médico ocupacional). Si cualquiera intenta validar el tipo que no le corresponde, `403` con un mensaje explícito. `SUPER_USUARIO` no tiene esta restricción, puede validar cualquier documento.
 
 **Aprobación/rechazo de la autorización (cambio 2026-09-30, revierte el cambio de 2026-09-29):** `Docente.registroCompletado` ya se marcó `true` al **subir** el archivo (ver `POST /api/documentos`), así que aprobar este documento ya no necesita tocar ese campo — usa el mensaje genérico de "documento aprobado". Si en cambio se **rechaza** el documento de autorización (`tipoDocumento.esRequisitoRegistro: true`), este endpoint pone `Docente.registroCompletado = false` de nuevo, re-bloqueando al docente hasta que lo resuba corregido (momento en el que `POST /api/documentos` lo vuelve a poner en `true`). El correo de rechazo de este documento específico trae un mensaje distinto, aclarando que debe corregirlo para seguir con el resto de su documentación.
 
@@ -518,10 +550,14 @@ Requiere token (cualquier rol). Devuelve **todos** los tipos de documento, inclu
 
 ```json
 [
-  { "id": "...", "codigo": "AUTORIZACION_NOTIFICACION_ELECTRONICA", "nombre": "...", "descripcion": null, "obligatorio": true, "esRequisitoRegistro": true, "orden": 0 },
-  { "id": "...", "codigo": "CERTIFICADO_CUENTA_BANCARIA", "nombre": "...", "descripcion": null, "obligatorio": true, "esRequisitoRegistro": false, "orden": 1 }
+  { "id": "...", "codigo": "AUTORIZACION_NOTIFICACION_ELECTRONICA", "nombre": "...", "descripcion": null, "obligatorio": true, "esRequisitoRegistro": true, "subidoPor": "DOCENTE", "orden": 0 },
+  { "id": "...", "codigo": "CERTIFICADO_CUENTA_BANCARIA", "nombre": "...", "descripcion": null, "obligatorio": true, "esRequisitoRegistro": false, "subidoPor": "DOCENTE", "orden": 1 },
+  { "id": "...", "codigo": "EXAMEN_MEDICO_OCUPACIONAL", "nombre": "...", "descripcion": "...", "obligatorio": true, "esRequisitoRegistro": false, "subidoPor": "TALENTO_HUMANO", "orden": 22 },
+  { "id": "...", "codigo": "ACTA_DE_POSESION", "nombre": "...", "descripcion": "...", "obligatorio": true, "esRequisitoRegistro": false, "subidoPor": "GESTOR_DOCUMENTAL", "orden": 24 }
 ]
 ```
+
+**`subidoPor`** (nuevo, 2026-10-02): `DOCENTE` (default, 23 tipos normales + autorización) | `TALENTO_HUMANO` (solo `EXAMEN_MEDICO_OCUPACIONAL`) | `GESTOR_DOCUMENTAL` (solo `ACTA_DE_POSESION`) — ver nota de rol al inicio de este documento para el flujo completo.
 
 ---
 
@@ -551,6 +587,7 @@ Requiere token. Marca una notificación propia como leída.
 - **TipoNotificacion**: `REGISTRO`, `DOCUMENTO_EN_REVISION`, `DOCUMENTO_APROBADO`, `DOCUMENTO_RECHAZADO`, `RECORDATORIO`, `RESTABLECIMIENTO_CLAVE`, `DOCUMENTACION_LISTA_REVISION`, `DOCUMENTACION_APROBADA`, `OTRO`
 - **EstadoEnvioEmail**: `ENVIADO`, `FALLIDO` (solo en filas `Notificacion` con `canal: EMAIL`)
 - **TipoPosesion**: `DOCENTE`, `ADMINISTRATIVO` (tipo de aspirante en `Docente.tipoPosesion` — no confundir con `RolNombre`)
+- **SubidoPor** (nuevo, 2026-10-02): `DOCENTE`, `TALENTO_HUMANO`, `GESTOR_DOCUMENTAL` (en `TipoDocumento.subidoPor` — quién sube ese tipo de documento)
 - **TipoDocumentoIdentidad**: `CEDULA_CIUDADANIA`, `CEDULA_EXTRANJERIA`, `TARJETA_IDENTIDAD`, `PASAPORTE`, `PEP`, `PPT` (en `Usuario.tipoDocumento`)
 - **Sexo**: `MASCULINO`, `FEMENINO`
 - **EstadoCivil**: `SOLTERO`, `CASADO`, `UNION_LIBRE`, `SEPARADO`, `DIVORCIADO`, `VIUDO`

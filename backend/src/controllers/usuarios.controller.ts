@@ -156,6 +156,42 @@ export const restablecerClave = async (req: Request, res: Response) => {
   res.json({ passwordTemporal: nuevaPassword });
 };
 
+const actualizarRolSchema = z.object({
+  rol: z.enum(ROLES_STAFF),
+});
+
+/**
+ * Cambia el rol de una cuenta de personal interno ya creada (SAC, Talento
+ * Humano, Gestor Documental o Super Usuario) — nunca de un Docente, que no tiene
+ * un "rol de staff" que cambiar (2026-10-02). Mismo candado que desactivar una
+ * cuenta: un Super Usuario no puede cambiarse el rol a sí mismo, para evitar
+ * que se bloquee el acceso por error.
+ */
+export const actualizarRol = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { rol } = actualizarRolSchema.parse(req.body);
+
+  if (id === req.usuario!.id) {
+    throw new AppError(400, "No puedes cambiar tu propio rol");
+  }
+
+  const usuario = await prisma.usuario.findUnique({ where: { id } });
+  if (!usuario) throw new AppError(404, "Usuario no encontrado");
+  if (usuario.rol === "DOCENTE") {
+    throw new AppError(400, "No se puede asignar un rol de personal interno a una cuenta de Docente");
+  }
+
+  const actualizado = await prisma.usuario.update({ where: { id }, data: { rol } });
+
+  await notificar({
+    usuarioId: id,
+    tipo: "OTRO",
+    mensaje: `Un Super Usuario cambió tu rol a ${rol}.`,
+  });
+
+  res.json(actualizado);
+};
+
 /** Lista el personal interno (todo lo que no sea Docente). */
 export const listarUsuariosStaff = async (_req: Request, res: Response) => {
   const usuarios = await prisma.usuario.findMany({

@@ -1,33 +1,42 @@
 import { ZipArchive } from "archiver";
+import ExcelJS from "exceljs";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "@/lib/AppError";
 import { URL_LOGIN } from "@/lib/emailTemplate";
 import { descargarArchivoDocumento } from "@/lib/storage";
+import { tieneDocumentosDocenteAprobados } from "@/lib/checklist";
 import { prisma } from "@/lib/prisma";
 import { notificar } from "@/services/notificaciones.service";
 
 /**
- * Lista docentes con su avance de checklist (para SAC/TALENTO_HUMANO/SUPER_USUARIO,
- * sin restricción). GESTOR_DOCUMENTAL solo ve los docentes con TODA su
- * documentación aprobada (documentacionAprobada=true) — mientras un docente esté
- * en proceso, este rol no tiene ninguna visibilidad sobre él (ver también
+ * Lista docentes con su avance de checklist (para TALENTO_HUMANO/SUPER_USUARIO,
+ * sin restricción). GESTOR_DOCUMENTAL solo ve los docentes con los documentos del
+ * checklist normal (no el examen médico/acta) ya aprobados (ver
+ * tieneDocumentosDocenteAprobados) — mientras un docente esté en proceso, este rol
+ * no tiene ninguna visibilidad sobre él. SAC ya no usa esta ruta en absoluto —
+ * solo ve la autorización de notificación electrónica vía la bandeja de
+ * documentos (ver listarDocumentos en documentos.controller.ts). Ver también
  * obtenerChecklist, obtenerPerfilDocente y descargarDocumentos, que aplican la
- * misma regla para el detalle de un docente puntual).
+ * misma regla para el detalle de un docente puntual.
  */
 export const listarDocentes = async (req: Request, res: Response) => {
   const esGestorDocumental = req.usuario?.rol === "GESTOR_DOCUMENTAL";
+  const totalTiposDocente = esGestorDocumental ? await prisma.tipoDocumento.count({ where: { subidoPor: "DOCENTE" } }) : 0;
 
   const docentes = await prisma.docente.findMany({
-    where: esGestorDocumental ? { documentacionAprobada: true } : undefined,
     include: {
       usuario: { select: { id: true, cedula: true, nombres: true, apellidos: true, email: true, telefono: true, activo: true, debeCambiarPassword: true } },
-      documentos: { select: { estado: true } },
+      documentos: { select: { estado: true, tipoDocumento: { select: { subidoPor: true } } } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const resultado = docentes.map((docente) => {
+  const visibles = esGestorDocumental
+    ? docentes.filter((d) => d.documentos.filter((doc) => doc.tipoDocumento.subidoPor === "DOCENTE" && doc.estado === "APROBADO").length === totalTiposDocente)
+    : docentes;
+
+  const resultado = visibles.map((docente) => {
     const total = docente.documentos.length;
     const aprobados = docente.documentos.filter((d) => d.estado === "APROBADO").length;
     const rechazados = docente.documentos.filter((d) => d.estado === "RECHAZADO").length;
@@ -67,8 +76,11 @@ export const obtenerChecklist = async (req: Request, res: Response) => {
   }
 
   const esPropio = req.usuario?.id === docente.usuarioId;
-  const esRevisorCompleto = req.usuario && ["SAC", "TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
-  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && docente.documentacionAprobada;
+  // SAC ya no tiene acceso de solo-lectura al checklist completo de un docente
+  // (2026-10-02) — solo ve la autorización de notificación electrónica vía la
+  // bandeja de documentos (ver documentos.controller.ts).
+  const esRevisorCompleto = req.usuario && ["TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
+  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && (await tieneDocumentosDocenteAprobados(id));
   if (!esPropio && !esRevisorCompleto && !esGestorDocumentalConAcceso) {
     throw new AppError(403, "No tienes acceso a este docente");
   }
@@ -142,8 +154,11 @@ export const obtenerPerfilDocente = async (req: Request, res: Response) => {
   }
 
   const esPropio = req.usuario?.id === docente.usuarioId;
-  const esRevisorCompleto = req.usuario && ["SAC", "TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
-  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && docente.documentacionAprobada;
+  // SAC ya no tiene acceso de solo-lectura al perfil completo de un docente
+  // (2026-10-02) — solo ve la autorización de notificación electrónica vía la
+  // bandeja de documentos (ver documentos.controller.ts).
+  const esRevisorCompleto = req.usuario && ["TALENTO_HUMANO", "SUPER_USUARIO"].includes(req.usuario.rol);
+  const esGestorDocumentalConAcceso = req.usuario?.rol === "GESTOR_DOCUMENTAL" && (await tieneDocumentosDocenteAprobados(id));
   if (!esPropio && !esRevisorCompleto && !esGestorDocumentalConAcceso) {
     throw new AppError(403, "No tienes acceso a este docente");
   }
@@ -179,8 +194,12 @@ export const finalizarDocumentacion = async (req: Request, res: Response) => {
     throw new AppError(403, "Solo el propio docente puede finalizar su documentación");
   }
 
+  // Los tipos con subidoPor != DOCENTE (examen médico ocupacional, acta de
+  // posesión — 2026-10-02) no dependen del docente: los sube TALENTO_HUMANO/
+  // GESTOR_DOCUMENTAL por separado, después, así que no cuentan para "ya subí
+  // todo lo mío" (ver subirDocumento para el chequeo de cuándo se habilitan).
   const [tipos, documentos] = await Promise.all([
-    prisma.tipoDocumento.findMany({ select: { codigo: true, id: true } }),
+    prisma.tipoDocumento.findMany({ where: { subidoPor: "DOCENTE" }, select: { codigo: true, id: true } }),
     prisma.documento.findMany({ where: { docenteId: id }, select: { tipoDocumentoId: true, estado: true } }),
   ]);
 
@@ -251,12 +270,12 @@ export const descargarDocumentos = async (req: Request, res: Response) => {
     throw new AppError(404, "Docente no encontrado");
   }
 
-  // GESTOR_DOCUMENTAL solo puede descargar el respaldo de un docente con TODA su
-  // documentación aprobada (ver nota de rol al inicio del archivo); los demás
-  // roles con acceso a esta ruta (SAC/TALENTO_HUMANO/SUPER_USUARIO) no
-  // tienen esta restricción.
-  if (req.usuario?.rol === "GESTOR_DOCUMENTAL" && !docente.documentacionAprobada) {
-    throw new AppError(403, "Solo puedes descargar el respaldo de docentes con toda su documentación aprobada");
+  // SAC ya no tiene acceso a esta ruta en absoluto (2026-10-02, ver routes).
+  // GESTOR_DOCUMENTAL solo puede descargar el respaldo de un docente con el
+  // checklist normal ya aprobado (ver tieneDocumentosDocenteAprobados); TALENTO_HUMANO
+  // y SUPER_USUARIO no tienen esta restricción.
+  if (req.usuario?.rol === "GESTOR_DOCUMENTAL" && !(await tieneDocumentosDocenteAprobados(id))) {
+    throw new AppError(403, "Solo puedes descargar el respaldo de docentes con su documentación aprobada");
   }
 
   const documentosAprobados = await prisma.documento.findMany({
@@ -298,6 +317,48 @@ export const descargarDocumentos = async (req: Request, res: Response) => {
     console.error(`Error generando el .zip del docente ${id}:`, err);
     res.destroy();
   }
+};
+
+/**
+ * Exporta en Excel (.xlsx) el listado de docentes con su proceso de posesión
+ * 100% completo (`documentacionAprobada: true`, los 25 documentos aprobados,
+ * incluido examen médico y acta de posesión) — nuevo, 2026-10-02. Mismos roles
+ * con acceso que GET /api/docentes (SAC queda afuera, ver routes).
+ */
+export const descargarListadoAprobados = async (_req: Request, res: Response) => {
+  const docentes = await prisma.docente.findMany({
+    where: { documentacionAprobada: true },
+    include: {
+      usuario: { select: { cedula: true, nombres: true, apellidos: true } },
+    },
+    orderBy: { documentacionAprobadaEn: "asc" },
+  });
+
+  const workbook = new ExcelJS.Workbook();
+  const hoja = workbook.addWorksheet("Docentes autorizados");
+
+  hoja.columns = [
+    { header: "Nombre completo", key: "nombreCompleto", width: 40 },
+    { header: "Cédula", key: "cedula", width: 16 },
+    { header: "Tipo de posesión", key: "tipoPosesion", width: 20 },
+    { header: "Fecha de aprobación", key: "fechaAprobacion", width: 20 },
+  ];
+  hoja.getRow(1).font = { bold: true };
+
+  for (const docente of docentes) {
+    hoja.addRow({
+      nombreCompleto: `${docente.usuario.nombres} ${docente.usuario.apellidos}`,
+      cedula: docente.usuario.cedula,
+      tipoPosesion: docente.tipoPosesion === "ADMINISTRATIVO" ? "Administrativo" : "Docente",
+      fechaAprobacion: docente.documentacionAprobadaEn?.toLocaleDateString("es-CO", { timeZone: "UTC" }) ?? "",
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="docentes-autorizados.xlsx"');
+  res.send(Buffer.from(buffer));
 };
 
 const informacionAdicionalSchema = z

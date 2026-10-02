@@ -59,6 +59,17 @@ enum TipoPosesion {
   ADMINISTRATIVO
 }
 
+/// Quién sube un tipo de documento al sistema. DOCENTE (default) para los 23 del
+/// checklist normal; TALENTO_HUMANO/GESTOR_DOCUMENTAL para los 2 que no dependen
+/// del docente (examen médico ocupacional y acta de posesión, 2026-10-02) —
+/// esos dos se habilitan solo cuando el resto de los documentos del docente ya
+/// está APROBADO (ver subirDocumento).
+enum SubidoPor {
+  DOCENTE
+  TALENTO_HUMANO
+  GESTOR_DOCUMENTAL
+}
+
 enum TipoDocumentoIdentidad {
   CEDULA_CIUDADANIA
   CEDULA_EXTRANJERIA
@@ -217,6 +228,8 @@ model TipoDocumento {
   descripcion         String?
   obligatorio         Boolean @default(true)
   esRequisitoRegistro Boolean @default(false)
+  /// Quién lo sube — ver enum SubidoPor. DOCENTE para los 23 normales.
+  subidoPor           SubidoPor @default(DOCENTE)
   orden               Int     @default(0)
 
   documentos Documento[]
