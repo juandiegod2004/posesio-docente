@@ -32,6 +32,15 @@ export const registrar = async (req: Request, res: Response) => {
     throw new AppError(409, "Ya existe un registro con esta cédula");
   }
 
+  // Lista negra (2026-10-02, ver cedulasBloqueadas.controller.ts): cédulas a las
+  // que un Super Usuario le negó el registro (ej. reporte de título académico
+  // falso) — mensaje genérico a propósito, no se le expone el motivo real al
+  // candidato, eso solo lo ven roles internos vía GET /api/cedulas-bloqueadas.
+  const bloqueada = await prisma.cedulaBloqueada.findUnique({ where: { cedula: datos.cedula } });
+  if (bloqueada) {
+    throw new AppError(403, "No es posible completar tu registro. Comunícate con la Secretaría de Educación del Magdalena para más información.");
+  }
+
   const { data: authUser, error } = await supabaseAdmin.auth.admin.createUser({
     email: datos.email,
     password: datos.password,

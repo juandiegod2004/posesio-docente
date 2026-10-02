@@ -104,7 +104,7 @@ Respuesta `201`:
 { "usuario": { "id": "...", "cedula": "...", "docente": { "id": "...", "registroCompletado": false, "tipoPosesion": "DOCENTE", "documentacionFinalizada": false, "documentacionFinalizadaEn": null, "documentacionAprobada": false, "documentacionAprobadaEn": null, ... }, ... } }
 ```
 
-Errores: `409` si la cédula ya existe, `400` si el correo ya está registrado (mensaje literal de Supabase Auth).
+Errores: `409` si la cédula ya existe, `400` si el correo ya está registrado (mensaje literal de Supabase Auth), `403` si la cédula está en la lista negra (ver "Cédulas bloqueadas" más abajo — mensaje genérico, no revela el motivo).
 
 ### `GET /api/auth/me`
 
@@ -255,6 +255,35 @@ Respuesta: el `Usuario` actualizado. Errores: `400` si intentas cambiar tu propi
 El Super Usuario debe comunicarle esta clave al usuario por fuera de la plataforma (no hay email de por medio). La cuenta queda con `debeCambiarPassword: true` — la próxima vez que inicie sesión, el frontend debe bloquear todo hasta que la cambie por una propia vía `POST /api/auth/cambiar-password`.
 
 > Nota: no hay endpoint de bootstrap para el **primer** Super Usuario — se crea por línea de comandos con `npm run crear:super-usuario -- <cedula> <nombres> <apellidos> <email> <password>` (una sola vez por entorno).
+
+---
+
+## Cédulas bloqueadas (lista negra, nuevo 2026-10-02, solo Super Usuario)
+
+Cédulas a las que se les niega el registro — ej. reportes de título académico falso. `POST /api/auth/registro` rechaza con `403` cualquier intento de registro con una cédula en esta lista, con un mensaje genérico que NO revela el motivo real al candidato (`"No es posible completar tu registro. Comunícate con la Secretaría de Educación del Magdalena para más información."`) — el motivo solo lo ven roles internos acá.
+
+**No afecta cuentas ya registradas** — si la cédula ya tiene una cuenta, agregarla a la lista negra no la desactiva ni le bloquea el acceso (para eso, `PATCH /api/usuarios/:id/activo` por separado). Solo previene un registro *futuro* con esa cédula.
+
+### `GET /api/cedulas-bloqueadas`
+
+Lista completa, con motivo y quién la agregó.
+
+```json
+[{ "id": "...", "cedula": "1079661876", "motivo": "Título académico falso", "agregadoPorId": "...", "createdAt": "..." }]
+```
+
+### `POST /api/cedulas-bloqueadas`
+
+```json
+// Body
+{ "cedula": "1079661876", "motivo": "Título académico falso" }
+```
+
+Respuesta `201`: la entrada creada. Error `409` si esa cédula ya está en la lista.
+
+### `DELETE /api/cedulas-bloqueadas/:id`
+
+Quita una entrada (ej. reporte erróneo). Respuesta `204`. Error `404` si no existe.
 
 ---
 

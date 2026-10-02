@@ -133,6 +133,24 @@ model Usuario {
   @@map("usuarios")
 }
 
+/// Lista negra de cédulas a las que se les niega el registro (2026-10-02) — ej.
+/// reportes de título académico falso. `POST /api/auth/registro` rechaza
+/// cualquier intento de registro con una cédula en esta tabla, sin exponerle al
+/// candidato el motivo real (mensaje genérico, ver auth.controller.ts). El
+/// motivo solo lo ven roles internos vía GET /api/cedulas-bloqueadas.
+model CedulaBloqueada {
+  id            String   @id @default(uuid())
+  cedula        String   @unique
+  motivo        String
+  /// Id del Usuario (Super Usuario) que la agregó — sin relación formal de
+  /// Prisma a propósito, es solo un dato de auditoría, no se necesita incluirlo
+  /// en queries relacionales.
+  agregadoPorId String
+  createdAt     DateTime @default(now())
+
+  @@map("cedulas_bloqueadas")
+}
+
 /// Datos específicos del docente en proceso de posesión.
 model Docente {
   id                        String       @id @default(uuid())
