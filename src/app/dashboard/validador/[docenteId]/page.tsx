@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { puedeValidarDocumento } from '@/lib/constants/roles';
 import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
@@ -27,9 +27,10 @@ import {
   TIPO_SANGRE_OPTIONS,
 } from '@/lib/constants/informacion-adicional';
 import { RejectDocumentModal, RejectableDocument } from '@/components/validador/RejectDocumentModal';
+import { StaffUploadDocumentModal, StaffUploadTarget } from '@/components/validador/StaffUploadDocumentModal';
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal';
 import { ResetPasswordModal, ResetPasswordTarget } from '@/components/admin/ResetPasswordModal';
-import { ArrowLeft, Eye, Loader2, AlertCircle, KeyRound, Download, BellRing } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, AlertCircle, KeyRound, Download, BellRing, Upload } from 'lucide-react';
 
 function etiqueta(options: { value: string; label: string }[], value: string | null): string {
   if (!value) return '—';
@@ -83,10 +84,10 @@ function esEstadoFinal(estado: EstadoDocumento): boolean {
   return estado === 'APROBADO' || estado === 'RECHAZADO' || estado === 'ARCHIVO_ELIMINADO';
 }
 
-/** El único ítem del checklist con `esRequisitoRegistro` en el backend — SAC es el único rol
- * (aparte de Super Usuario) que puede validarlo; Talento Humano valida todo lo demás. */
-function esAutorizacion(item: ChecklistItemBackend): boolean {
-  return item.codigo === 'AUTORIZACION_NOTIFICACION_ELECTRONICA';
+/** Ítems que son responsabilidad del propio docente (todos salvo examen médico ocupacional y
+ * acta de posesión, que suben Talento Humano / Gestor Documental una vez el resto está aprobado). */
+function esResponsabilidadDelDocente(item: ChecklistItemBackend): boolean {
+  return !item.subidoPor || item.subidoPor === 'DOCENTE';
 }
 
 type FiltroChecklist = 'todos' | 'por_verificar' | 'aprobado' | 'no_subido' | 'rechazado';
@@ -116,6 +117,7 @@ export default function ValidadorDocenteDetailPage() {
   const params = useParams<{ docenteId: string }>();
   const docenteId = params.docenteId;
   const { role, getAccessToken } = useAuth();
+  const router = useRouter();
 
   const [docente, setDocente] = useState<DocenteResumen | null>(null);
   const [perfil, setPerfil] = useState<DocentePerfilCompleto | null>(null);
@@ -124,13 +126,24 @@ export default function ValidadorDocenteDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actingOnId, setActingOnId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<ChecklistItemBackend | null>(null);
+  const [staffUploadTarget, setStaffUploadTarget] = useState<StaffUploadTarget | null>(null);
   const [viewer, setViewer] = useState<{ url: string | null; fileName?: string; error?: string } | undefined>();
   const [resetTarget, setResetTarget] = useState<ResetPasswordTarget | null>(null);
   const [togglingActivo, setTogglingActivo] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [filtro, setFiltro] = useState<FiltroChecklist>('todos');
 
+  // SAC perdió acceso a GET /api/docentes, /:id, /:id/checklist y /:id/descargar — esta
+  // página entera le daría 403. El proxy no distingue esta sub-ruta de /dashboard/validador
+  // (misma "sección"), así que la guarda tiene que vivir acá, no solo en la ausencia de links.
+  useEffect(() => {
+    if (role === 'SAC') {
+      router.replace('/dashboard/validador');
+    }
+  }, [role, router]);
+
   const load = useCallback(async () => {
+    if (role === 'SAC') return;
     const token = await getAccessToken();
     if (!token) return;
     setIsLoading(true);
@@ -149,7 +162,7 @@ export default function ValidadorDocenteDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [getAccessToken, docenteId]);
+  }, [getAccessToken, docenteId, role]);
 
   useEffect(() => {
     load();
@@ -251,6 +264,12 @@ export default function ValidadorDocenteDetailPage() {
       setActingOnId(null);
     }
   };
+
+  // Gatea el botón de subida de examen médico/acta de posesión: esos 2 ítems solo se habilitan
+  // cuando el resto del checklist del docente (todo lo que es su responsabilidad) ya está aprobado.
+  const otros23Aprobados =
+    checklist.filter(esResponsabilidadDelDocente).length > 0 &&
+    checklist.filter(esResponsabilidadDelDocente).every((i) => i.documento?.estado === 'APROBADO');
 
   const porVerificarCount = checklist.filter((i) => i.documento && !esEstadoFinal(i.documento.estado)).length;
   const aprobadoCount = checklist.filter((i) => i.documento?.estado === 'APROBADO').length;
@@ -462,7 +481,12 @@ export default function ValidadorDocenteDetailPage() {
           <div className="divide-y divide-neutral-100">
             {checklistFiltrado.map(({ item, index }) => {
               const documento = item.documento;
-              const puedeValidar = puedeValidarDocumento(role, esAutorizacion(item));
+              const puedeValidar = puedeValidarDocumento(role, item.codigo);
+              // Examen médico ocupacional / acta de posesión: no los sube el docente, los sube
+              // el rol de staff indicado en `subidoPor`, y solo una vez aprobado el resto.
+              const puedeSubir =
+                !!item.subidoPor && item.subidoPor !== 'DOCENTE' && (role === item.subidoPor || role === 'SUPER_USUARIO');
+              const necesitaSubida = !documento || documento.estado === 'RECHAZADO' || documento.estado === 'ARCHIVO_ELIMINADO';
               return (
                 <div key={item.tipoDocumentoId} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -533,6 +557,24 @@ export default function ValidadorDocenteDetailPage() {
                         {documento.estado === 'ARCHIVO_ELIMINADO' ? 'Pendiente de reenvío' : 'Validación finalizada'}
                       </span>
                     )}
+                    {puedeSubir && necesitaSubida && (
+                      <button
+                        type="button"
+                        disabled={!otros23Aprobados}
+                        onClick={() =>
+                          setStaffUploadTarget({ docenteId, tipoDocumentoId: item.tipoDocumentoId, nombre: item.nombre })
+                        }
+                        title={
+                          otros23Aprobados
+                            ? undefined
+                            : 'Se habilita cuando el resto del checklist del docente esté aprobado.'
+                        }
+                        className="px-3.5 py-2 bg-brand-700 hover:bg-brand-800 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold text-center transition-colors shadow-xs whitespace-nowrap inline-flex items-center gap-1.5"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Subir documento
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -557,6 +599,15 @@ export default function ValidadorDocenteDetailPage() {
       />
 
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
+
+      <StaffUploadDocumentModal
+        target={staffUploadTarget}
+        onClose={() => setStaffUploadTarget(null)}
+        onUploadSuccess={() => {
+          setStaffUploadTarget(null);
+          load();
+        }}
+      />
     </div>
   );
 }

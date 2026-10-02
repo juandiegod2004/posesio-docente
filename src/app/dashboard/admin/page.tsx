@@ -17,6 +17,7 @@ import {
 } from '@/lib/api';
 import { CreateStaffModal } from '@/components/admin/CreateStaffModal';
 import { ResetPasswordModal, ResetPasswordTarget } from '@/components/admin/ResetPasswordModal';
+import { ChangeRoleModal, ChangeRoleTarget } from '@/components/admin/ChangeRoleModal';
 
 export default function AdminDashboardPage() {
   const { role, user, getAccessToken } = useAuth();
@@ -30,6 +31,7 @@ export default function AdminDashboardPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<ResetPasswordTarget | null>(null);
+  const [roleTarget, setRoleTarget] = useState<ChangeRoleTarget | null>(null);
 
   const loadData = useCallback(async () => {
     const token = await getAccessToken();
@@ -233,6 +235,21 @@ export default function AdminDashboardPage() {
                           {role === 'SUPER_USUARIO' && (
                             <button
                               type="button"
+                              onClick={() =>
+                                setRoleTarget({
+                                  usuarioId: u.id,
+                                  nombre: `${u.nombres} ${u.apellidos}`,
+                                  rolActual: u.rol as ChangeRoleTarget['rolActual'],
+                                })
+                              }
+                              className="font-semibold text-brand-700 hover:text-brand-900"
+                            >
+                              Cambiar rol
+                            </button>
+                          )}
+                          {role === 'SUPER_USUARIO' && (
+                            <button
+                              type="button"
                               onClick={() => setResetTarget({ usuarioId: u.id, nombre: `${u.nombres} ${u.apellidos}` })}
                               className="font-semibold text-amber-700 hover:text-amber-900"
                             >
@@ -264,6 +281,14 @@ export default function AdminDashboardPage() {
 
       <CreateStaffModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onCreated={loadData} />
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
+      <ChangeRoleModal
+        target={roleTarget}
+        onClose={() => setRoleTarget(null)}
+        onChanged={() => {
+          setRoleTarget(null);
+          loadData();
+        }}
+      />
     </div>
   );
 }

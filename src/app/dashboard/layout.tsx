@@ -47,8 +47,14 @@ export default function DashboardLayout({
     ...(role === 'SAC' || role === 'TALENTO_HUMANO' || role === 'SUPER_USUARIO' || role === 'GESTOR_DOCUMENTAL'
       ? [
           {
-            // Gestor Documental no valida nada: solo consulta docentes con documentación ya aprobada.
-            name: role === 'GESTOR_DOCUMENTAL' ? 'Docentes Aprobados' : 'Validación Documental',
+            // SAC solo ve la bandeja de autorizaciones (sin acceso al resto del perfil/checklist
+            // del docente); Gestor Documental solo consulta/gestiona el acta de posesión.
+            name:
+              role === 'SAC'
+                ? 'Autorizaciones Pendientes'
+                : role === 'GESTOR_DOCUMENTAL'
+                ? 'Actas de Posesión'
+                : 'Validación Documental',
             href: '/dashboard/validador',
             icon: FileCheck,
           },

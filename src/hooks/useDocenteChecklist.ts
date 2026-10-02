@@ -38,7 +38,15 @@ function mapChecklistItem(entry: ChecklistItemBackend): ChecklistDocumentItem {
     uploadedAt: documento?.subidoEn,
     validatorComment: documento?.comentarioValidador ?? undefined,
     archivoEliminado: documento?.estado === 'ARCHIVO_ELIMINADO',
+    subidoPor: entry.subidoPor,
   };
+}
+
+/** El examen médico ocupacional y el acta de posesión ya no los sube el docente (los sube
+ * Talento Humano / Gestor Documental respectivamente, una vez el resto del checklist está
+ * aprobado) — se ocultan por completo de la vista del docente, no hay nada que él pueda hacer. */
+function esResponsabilidadDelDocente(item: ChecklistDocumentItem): boolean {
+  return !item.subidoPor || item.subidoPor === 'DOCENTE';
 }
 
 /** Checklist real de los documentos del docente autenticado, contra el backend. */
@@ -62,7 +70,12 @@ export function useDocenteChecklist() {
     setError(null);
     try {
       const { checklist } = await fetchChecklist(token, user.docenteId);
-      setItems(checklist.map(mapChecklistItem).sort((a, b) => a.id - b.id));
+      setItems(
+        checklist
+          .map(mapChecklistItem)
+          .filter(esResponsabilidadDelDocente)
+          .sort((a, b) => a.id - b.id)
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo cargar tu checklist de documentos.');
     } finally {

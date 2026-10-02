@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
-import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
+import { DOCENTE_UPLOAD_ITEMS } from '@/lib/constants/docente-documents';
 import {
   FileText,
   CheckCircle2,
@@ -40,7 +40,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
               ¡Bienvenido al Proceso de Validación Documental para Nombramiento y Posesión!
             </h2>
             <p className="text-xs sm:text-sm text-neutral-600 mt-1">
-              Como docente seleccionado, aquí podrás gestionar y subir digitalmente los <strong>{TOTAL_CHECKLIST_ITEMS} documentos oficiales</strong> requeridos para tu vinculación formal.
+              Como docente seleccionado, aquí podrás gestionar y subir digitalmente los <strong>{DOCENTE_UPLOAD_ITEMS} documentos oficiales</strong> requeridos para tu vinculación formal.
             </p>
           </div>
         </div>

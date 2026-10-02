@@ -29,7 +29,7 @@ export const ROLES: Record<UserRole, RoleConfig> = {
     id: 'SAC',
     label: 'SAC',
     description:
-      'Valida exclusivamente la autorización de notificación electrónica: su aprobación habilita al docente a subir el resto del checklist.',
+      'Valida exclusivamente la autorización de notificación electrónica, sin acceso al resto del perfil ni checklist del docente.',
     badgeColor: 'bg-sky-100 text-sky-800 border-sky-300',
     iconName: 'FileCheck',
     allowedPaths: ['/dashboard', '/dashboard/validador'],
@@ -50,12 +50,13 @@ export const ROLES: Record<UserRole, RoleConfig> = {
   GESTOR_DOCUMENTAL: {
     id: 'GESTOR_DOCUMENTAL',
     label: 'Gestor Documental',
-    description: 'Consulta el perfil y los documentos de docentes con toda su documentación ya aprobada.',
+    description:
+      'Consulta el perfil y los documentos de docentes con su checklist aprobado, y sube/valida exclusivamente el acta de posesión.',
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
     iconName: 'FileCheck',
     allowedPaths: ['/dashboard', '/dashboard/validador'],
     homePath: '/dashboard/validador',
-    canValidateDocuments: false,
+    canValidateDocuments: true,
   },
   DOCENTE: {
     id: 'DOCENTE',
@@ -74,16 +75,17 @@ export const ROLES: Record<UserRole, RoleConfig> = {
 };
 
 /**
- * SAC y Talento Humano ven el mismo checklist completo (solo consulta compartida), pero cada
- * uno solo puede aprobar/rechazar su mitad: SAC exclusivamente la autorización de notificación
- * electrónica (el único documento con `esRequisitoRegistro`), Talento Humano el resto de los 24.
- * Super Usuario no tiene esta restricción. El backend aplica la misma regla en
- * `PATCH /api/documentos/:id/validar` (403 si el rol no corresponde) — esto es solo para
- * mostrar/ocultar el botón en la UI, no reemplaza esa validación.
+ * Cada rol de staff valida solo su carril del checklist, por `codigo` del tipo de documento:
+ * SAC exclusivamente la autorización de notificación electrónica (y no tiene acceso a nada
+ * más del docente — ni perfil, ni el resto del checklist); Gestor Documental exclusivamente
+ * el acta de posesión; Talento Humano el resto (los otros 23). Super Usuario no tiene esta
+ * restricción. El backend aplica la misma regla en `PATCH /api/documentos/:id/validar` (403
+ * si el rol no corresponde) — esto es solo para mostrar/ocultar el botón en la UI, no
+ * reemplaza esa validación.
  */
-export function puedeValidarDocumento(role: UserRole | null, esAutorizacion: boolean): boolean {
+export function puedeValidarDocumento(role: UserRole | null, codigo: string): boolean {
   if (role === 'SUPER_USUARIO') return true;
-  if (role === 'SAC') return esAutorizacion;
-  if (role === 'TALENTO_HUMANO') return !esAutorizacion;
-  return false;
+  if (codigo === 'AUTORIZACION_NOTIFICACION_ELECTRONICA') return role === 'SAC';
+  if (codigo === 'ACTA_DE_POSESION') return role === 'GESTOR_DOCUMENTAL';
+  return role === 'TALENTO_HUMANO';
 }

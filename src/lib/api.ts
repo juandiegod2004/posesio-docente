@@ -97,6 +97,12 @@ export interface BackendUsuario {
   docente?: BackendDocente | null;
 }
 
+/** Quién debe subir este tipo de documento. `DOCENTE` es el caso general; los otros 2 valores
+ * son excepciones puntuales (examen médico ocupacional → TALENTO_HUMANO, acta de posesión →
+ * GESTOR_DOCUMENTAL), que solo se habilitan una vez el resto del checklist del docente está
+ * APROBADO. Ausente (`undefined`) se trata igual que `'DOCENTE'`. */
+export type SubidoPor = 'DOCENTE' | 'TALENTO_HUMANO' | 'GESTOR_DOCUMENTAL';
+
 export interface TipoDocumento {
   id: string;
   codigo: string;
@@ -105,6 +111,7 @@ export interface TipoDocumento {
   obligatorio: boolean;
   esRequisitoRegistro: boolean;
   orden: number;
+  subidoPor?: SubidoPor;
 }
 
 /** GET /api/auth/me — perfil del usuario autenticado (rol incluido). */
@@ -322,6 +329,7 @@ export interface ChecklistItemBackend {
   nombre: string;
   obligatorio: boolean;
   documento: ChecklistDocumentoBackend | null;
+  subidoPor?: SubidoPor;
 }
 
 /** GET /api/docentes/:id/checklist — todos los tipos de documento (incluida la autorización de
@@ -382,6 +390,22 @@ export async function actualizarActivoUsuario(
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ activo }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
+  return res.json();
+}
+
+/** PATCH /api/usuarios/:id/rol — Solo Super Usuario. Cambia el rol de una cuenta de personal
+ * interno ya creada (400 si intenta cambiar su propio rol o si el id es un Docente). */
+export async function cambiarRolUsuario(
+  accessToken: string,
+  usuarioId: string,
+  rol: 'SAC' | 'TALENTO_HUMANO' | 'GESTOR_DOCUMENTAL' | 'SUPER_USUARIO'
+): Promise<BackendUsuario> {
+  const res = await fetch(`/api/usuarios/${usuarioId}/rol`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rol }),
   });
   if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
   return res.json();
@@ -541,6 +565,19 @@ export async function descargarDocumentosAprobados(
   if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
   const disposition = res.headers.get('Content-Disposition') ?? '';
   const fileName = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? `${docenteId}.zip`;
+  const blob = await res.blob();
+  return { blob, fileName };
+}
+
+/** GET /api/docentes/listado-aprobados — .xlsx con los docentes 100% aprobados (nombre, cédula,
+ * tipo posesión, fecha aprobación). Roles: TALENTO_HUMANO/GESTOR_DOCUMENTAL/SUPER_USUARIO. */
+export async function descargarListadoAprobados(accessToken: string): Promise<{ blob: Blob; fileName: string }> {
+  const res = await fetch('/api/docentes/listado-aprobados', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, await parseErrorMessage(res));
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const fileName = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? 'docentes-aprobados.xlsx';
   const blob = await res.blob();
   return { blob, fileName };
 }

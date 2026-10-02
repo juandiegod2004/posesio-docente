@@ -18,7 +18,7 @@ interface CreateStaffModalProps {
   onCreated: () => void;
 }
 
-const ASSIGNABLE_ROLES = ['SAC', 'TALENTO_HUMANO', 'GESTOR_DOCUMENTAL', 'SUPER_USUARIO'] as const;
+export const ASSIGNABLE_ROLES = ['SAC', 'TALENTO_HUMANO', 'GESTOR_DOCUMENTAL', 'SUPER_USUARIO'] as const;
 
 export function CreateStaffModal({ isOpen, onClose, onCreated }: CreateStaffModalProps) {
   const { getAccessToken } = useAuth();

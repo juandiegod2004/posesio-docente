@@ -251,3 +251,9 @@ export const DOCENTE_CHECKLIST_META: StaticChecklistMeta[] = [
 
 /** Total de ítems del checklist (documentos de posesión + autorización de registro). */
 export const TOTAL_CHECKLIST_ITEMS = DOCENTE_CHECKLIST_META.length;
+
+/** Ítems que debe subir el propio docente: excluye examen médico ocupacional y acta de
+ * posesión, que suben Talento Humano y Gestor Documental respectivamente una vez aprobado
+ * el resto. Solo para copy dirigido al docente sobre lo que ÉL tiene que hacer — el conteo
+ * real de qué oculta/habilita el checklist usa el campo `subidoPor` que viene del backend. */
+export const DOCENTE_UPLOAD_ITEMS = TOTAL_CHECKLIST_ITEMS - 2;

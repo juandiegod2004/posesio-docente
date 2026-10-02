@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { LogoSeal } from '@/components/ui/LogoSeal';
-import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
+import { DOCENTE_UPLOAD_ITEMS } from '@/lib/constants/docente-documents';
 import { ShieldCheck } from 'lucide-react';
 
 interface AuthShellProps {
@@ -12,7 +12,7 @@ interface AuthShellProps {
 
 const STEPS = [
   { n: 1, text: 'Regístrate con tus datos básicos' },
-  { n: 2, text: `Inicia sesión y sube los ${TOTAL_CHECKLIST_ITEMS} documentos requeridos para tu posesión` },
+  { n: 2, text: `Inicia sesión y sube los ${DOCENTE_UPLOAD_ITEMS} documentos requeridos para tu posesión` },
   { n: 3, text: 'Sigue cada validación y corrige si el auditor lo solicita' },
 ];
 
