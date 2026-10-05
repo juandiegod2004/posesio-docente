@@ -482,6 +482,13 @@ export default function ValidadorDocenteDetailPage() {
             {checklistFiltrado.map(({ item, index }) => {
               const documento = item.documento;
               const puedeValidar = puedeValidarDocumento(role, item.codigo);
+              const documentoFinal = !!documento && esEstadoFinal(documento.estado);
+              // Super Usuario puede corregir una validación YA decidida (ej. desaprobar un
+              // documento que se había aprobado por error) — el resto de roles solo actúa
+              // sobre lo pendiente. ARCHIVO_ELIMINADO queda afuera siempre: no hay archivo
+              // que juzgar, exige resubida sí o sí.
+              const esCorreccion =
+                documentoFinal && documento?.estado !== 'ARCHIVO_ELIMINADO' && role === 'SUPER_USUARIO';
               // Examen médico ocupacional / acta de posesión: no los sube el docente, los sube
               // el rol de staff indicado en `subidoPor`, y solo una vez aprobado el resto.
               const puedeSubir =
@@ -532,11 +539,16 @@ export default function ValidadorDocenteDetailPage() {
                         <Eye className="w-4 h-4" />
                       </button>
                     )}
-                    {documento && puedeValidar && !esEstadoFinal(documento.estado) && (
+                    {documento && puedeValidar && (!documentoFinal || esCorreccion) && (
                       <>
+                        {esCorreccion && (
+                          <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wide whitespace-nowrap">
+                            Corregir:
+                          </span>
+                        )}
                         <button
                           type="button"
-                          disabled={actingOnId === documento.id}
+                          disabled={actingOnId === documento.id || documento.estado === 'APROBADO'}
                           onClick={() => handleApprove(item)}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg text-[11px] font-bold text-center transition-colors shadow-xs whitespace-nowrap"
                         >
@@ -544,7 +556,7 @@ export default function ValidadorDocenteDetailPage() {
                         </button>
                         <button
                           type="button"
-                          disabled={actingOnId === documento.id}
+                          disabled={actingOnId === documento.id || documento.estado === 'RECHAZADO'}
                           onClick={() => setRejectTarget(item)}
                           className="px-3.5 py-2 bg-red-50 hover:bg-red-100 disabled:opacity-60 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold text-center transition-colors whitespace-nowrap"
                         >
@@ -552,7 +564,7 @@ export default function ValidadorDocenteDetailPage() {
                         </button>
                       </>
                     )}
-                    {documento && puedeValidar && esEstadoFinal(documento.estado) && (
+                    {documento && puedeValidar && documentoFinal && !esCorreccion && (
                       <span className="text-[10px] text-neutral-400 font-medium whitespace-nowrap">
                         {documento.estado === 'ARCHIVO_ELIMINADO' ? 'Pendiente de reenvío' : 'Validación finalizada'}
                       </span>
