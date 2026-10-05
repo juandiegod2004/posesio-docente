@@ -1,3 +1,4 @@
+import type { EstadoDocumento } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { AppError } from "@/lib/AppError";
@@ -316,10 +317,18 @@ export const validarDocumento = async (req: Request, res: Response) => {
 
   // updateMany condicionado al estado leído: si otro validador ya actuó sobre este documento
   // (o su archivo fue eliminado) entre el findUnique de arriba y este punto, count() da 0 y
-  // se aborta la transacción en vez de sobreescribir en silencio.
+  // se aborta la transacción en vez de sobreescribir en silencio. SUPER_USUARIO (2026-10-05)
+  // es la única excepción: puede corregir una decisión YA tomada (ej. desaprobar un
+  // documento que se había aprobado por error) — el resto de roles no puede re-decidir
+  // sobre algo que ya quedó APROBADO/RECHAZADO, solo sobre lo pendiente de revisar.
+  // ARCHIVO_ELIMINADO queda afuera siempre: no tiene sentido decidir sobre un archivo
+  // que ya no existe en Storage, eso exige resubida sí o sí.
+  const estadosEditables: EstadoDocumento[] =
+    rol === "SUPER_USUARIO" ? ["PENDIENTE", "EN_REVISION", "APROBADO", "RECHAZADO"] : ["PENDIENTE", "EN_REVISION"];
+
   const documentoActualizado = await prisma.$transaction(async (tx) => {
     const resultado = await tx.documento.updateMany({
-      where: { id, estado: { in: ["PENDIENTE", "EN_REVISION"] } },
+      where: { id, estado: { in: estadosEditables } },
       data: { estado, comentarioValidador: comentario ?? null },
     });
 
