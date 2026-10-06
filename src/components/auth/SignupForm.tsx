@@ -11,9 +11,48 @@ import { InputFloatingLabel } from '@/components/ui/InputFloatingLabel';
 import { SelectFloatingLabel } from '@/components/ui/SelectFloatingLabel';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { TIPOS_DOCUMENTO_IDENTIDAD } from '@/lib/constants/informacion-adicional';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Lock } from 'lucide-react';
+
+// 2026-10-06: registro cerrado por decisión institucional, en espejo del flag
+// REGISTRO_CERRADO de backend/src/controllers/auth.controller.ts (que igual
+// rechaza cualquier intento con 403 aunque este flag no estuviera). Esto solo
+// evita que alguien llene todo el formulario para enterarse recién al final.
+const REGISTRO_CERRADO = true;
+
+function RegistroCerradoNotice() {
+  return (
+    <AuthShell>
+      <div className="space-y-6 text-center">
+        <div className="mx-auto w-12 h-12 rounded-xl bg-neutral-100 text-neutral-500 flex items-center justify-center">
+          <Lock className="w-6 h-6" />
+        </div>
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Registro cerrado</h1>
+          <p className="text-sm text-neutral-500">
+            El registro de nuevos docentes está cerrado. Si ya tienes una cuenta, inicia sesión para completar tus
+            correcciones y gestión documental. Para más información, comunícate con la Secretaría de Educación del
+            Magdalena.
+          </p>
+        </div>
+        <Link
+          href="/login"
+          className="inline-flex h-12 w-full items-center justify-center rounded-md bg-brand-700 px-5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-brand-800"
+        >
+          Iniciar sesión
+        </Link>
+      </div>
+    </AuthShell>
+  );
+}
 
 export function SignupForm() {
+  if (REGISTRO_CERRADO) {
+    return <RegistroCerradoNotice />;
+  }
+  return <SignupFormActive />;
+}
+
+function SignupFormActive() {
   const router = useRouter();
   const { signup } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
