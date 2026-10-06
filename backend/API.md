@@ -75,6 +75,8 @@ Errores de validación (body inválido) además incluyen `detalles`:
 
 ### `POST /api/auth/registro`
 
+**Cerrado (2026-10-06 — decisión institucional, no derogación de código).** Mientras el flag `REGISTRO_CERRADO` en `auth.controller.ts` esté en `true`, este endpoint rechaza **cualquier** intento con `403` y un mensaje genérico (`"El registro de nuevos docentes está cerrado. Si ya tienes una cuenta, inicia sesión para completar tus correcciones y gestión documental. Para más información, comunícate con la Secretaría de Educación del Magdalena."`), antes de validar el body o tocar la base de datos. El login y todo lo demás del flujo (correcciones, re-subida de documentos, etc.) sigue funcionando normal para quienes ya están registrados. El resto de esta sección describe el comportamiento cuando el registro está abierto (flag en `false`).
+
 Auto-registro de un **Docente** (los demás roles los crea un Super Usuario, ver más abajo). Público, no requiere token.
 
 ```json

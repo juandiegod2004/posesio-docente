@@ -24,7 +24,19 @@ const registroSchema = z.object({
  * "incompleto" (Docente.registroCompletado = false) hasta que suba el documento
  * de autorización de notificación electrónica vía POST /api/documentos.
  */
+// 2026-10-06: registros cerrados por decisión institucional — ya se registró
+// quien debía registrarse, ahora solo inician sesión para hacer correcciones.
+// Flag único para reabrir si se decide lo contrario más adelante.
+const REGISTRO_CERRADO = true;
+
 export const registrar = async (req: Request, res: Response) => {
+  if (REGISTRO_CERRADO) {
+    throw new AppError(
+      403,
+      "El registro de nuevos docentes está cerrado. Si ya tienes una cuenta, inicia sesión para completar tus correcciones y gestión documental. Para más información, comunícate con la Secretaría de Educación del Magdalena.",
+    );
+  }
+
   const datos = registroSchema.parse(req.body);
 
   const existente = await prisma.usuario.findUnique({ where: { cedula: datos.cedula } });
