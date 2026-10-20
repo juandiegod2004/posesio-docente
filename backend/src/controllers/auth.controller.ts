@@ -24,10 +24,9 @@ const registroSchema = z.object({
  * "incompleto" (Docente.registroCompletado = false) hasta que suba el documento
  * de autorización de notificación electrónica vía POST /api/documentos.
  */
-// 2026-10-06: registros cerrados por decisión institucional — ya se registró
-// quien debía registrarse, ahora solo inician sesión para hacer correcciones.
-// Flag único para reabrir si se decide lo contrario más adelante.
-const REGISTRO_CERRADO = true;
+// 2026-10-06 se cerraron los registros por decisión institucional; 2026-10-20 se
+// reabrieron. Flag único para cerrarlos de nuevo si hace falta.
+const REGISTRO_CERRADO = false;
 
 export const registrar = async (req: Request, res: Response) => {
   if (REGISTRO_CERRADO) {
