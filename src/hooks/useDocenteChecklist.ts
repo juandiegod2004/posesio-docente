@@ -24,13 +24,15 @@ function mapChecklistItem(entry: ChecklistItemBackend): ChecklistDocumentItem {
   const documento = entry.documento;
 
   return {
-    id: meta?.id ?? 0,
+    // `orden` del backend es la fuente oficial; la copia local solo es respaldo si el campo no llega.
+    id: entry.orden ?? meta?.id ?? 0,
     codigo: entry.codigo,
     tipoDocumentoId: entry.tipoDocumentoId,
     documentoId: documento?.id,
     title: meta?.title ?? entry.nombre,
     shortDescription: meta?.shortDescription,
-    instructions: meta?.instructions ?? 'Consulta los requisitos de este documento con Talento Humano.',
+    instructions:
+      meta?.instructions ?? entry.descripcion ?? 'Consulta los requisitos de este documento con Talento Humano.',
     specialNote: meta?.specialNote,
     category: meta?.category,
     status: documento ? ESTADO_TO_STATUS[documento.estado] : 'pendiente',
@@ -75,6 +77,9 @@ export function useDocenteChecklist() {
           .map(mapChecklistItem)
           .filter(esResponsabilidadDelDocente)
           .sort((a, b) => a.id - b.id)
+          // `orden` tiene huecos porque se ocultan los ítems de staff (22 y 24): se renumera por
+          // posición para que el docente vea 1..N sin saltos.
+          .map((item, index) => ({ ...item, id: index + 1 }))
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo cargar tu checklist de documentos.');

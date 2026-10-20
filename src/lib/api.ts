@@ -330,6 +330,11 @@ export interface ChecklistItemBackend {
   obligatorio: boolean;
   documento: ChecklistDocumentoBackend | null;
   subidoPor?: SubidoPor;
+  /** Posición oficial del tipo (único; 0 = autorización ... 24 = acta de posesión). Ausente en
+   * backends anteriores a este campo. */
+  orden?: number;
+  /** Instrucciones largas guardadas en la BD (solo algunos tipos las tienen). */
+  descripcion?: string | null;
 }
 
 /** GET /api/docentes/:id/checklist — todos los tipos de documento (incluida la autorización de

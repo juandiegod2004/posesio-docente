@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { ChecklistDocumentItem } from '@/types/docente-checklist';
 import { useAuth } from '@/context/AuthContext';
 import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
-import { TOTAL_CHECKLIST_ITEMS } from '@/lib/constants/docente-documents';
+import { DOCENTE_UPLOAD_ITEMS } from '@/lib/constants/docente-documents';
 import { ApiError, subirDocumento } from '@/lib/api';
 import {
   Upload,
@@ -112,7 +112,7 @@ export function UploadDocumentModal({
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
           <div className="space-y-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
-              Ítem #{item.id} de {TOTAL_CHECKLIST_ITEMS}
+              Ítem #{item.id} de {DOCENTE_UPLOAD_ITEMS}
             </span>
             <h3 className="text-base sm:text-lg font-bold text-neutral-900 leading-snug">
               {isResubmission ? 'Resubir soporte documental' : 'Subir documento de posesión'}
