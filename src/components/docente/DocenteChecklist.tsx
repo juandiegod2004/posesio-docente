@@ -117,7 +117,7 @@ export function DocenteChecklist() {
     () =>
       [...items]
         .filter((i) => i.status === 'rechazado' || i.status === 'en_revision')
-        .sort((a, b) => (a.status === 'rechazado' ? -1 : 1))
+        .sort((a, b) => Number(b.status === 'rechazado') - Number(a.status === 'rechazado'))
         .slice(0, 5),
     [items]
   );

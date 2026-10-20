@@ -27,7 +27,9 @@ export function StatusRing({
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
 
-  let cumulativeLength = 0;
+  const offsets = segments.map((_, i) =>
+    segments.slice(0, i).reduce((sum, s) => sum + (s.value > 0 ? (s.value / total) * circumference : 0), 0)
+  );
 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
@@ -36,7 +38,7 @@ export function StatusRing({
         {segments.map((seg, i) => {
           if (seg.value <= 0) return null;
           const dash = (seg.value / total) * circumference;
-          const circleEl = (
+          return (
             <circle
               key={i}
               cx={size / 2}
@@ -46,12 +48,10 @@ export function StatusRing({
               stroke={seg.color}
               strokeWidth={strokeWidth}
               strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeDashoffset={-cumulativeLength}
+              strokeDashoffset={-offsets[i]}
               strokeLinecap="butt"
             />
           );
-          cumulativeLength += dash;
-          return circleEl;
         })}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>

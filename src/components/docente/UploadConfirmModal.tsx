@@ -3,7 +3,7 @@
 import React from 'react';
 import { ChecklistDocumentItem } from '@/types/docente-checklist';
 import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
-import { CheckCircle2, Clock, FileCheck, ArrowRight } from 'lucide-react';
+import { Clock, ArrowRight } from 'lucide-react';
 
 interface UploadConfirmModalProps {
   item: ChecklistDocumentItem | null;

@@ -3,17 +3,7 @@
 import React from 'react';
 import { useLockBodyScroll } from '@/hooks/useLockBodyScroll';
 import { DOCENTE_UPLOAD_ITEMS } from '@/lib/constants/docente-documents';
-import {
-  FileText,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  FolderOpen,
-  ArrowRight,
-  ShieldCheck,
-  Building,
-  HelpCircle,
-} from 'lucide-react';
+import { FolderOpen, ArrowRight, Building } from 'lucide-react';
 
 interface WelcomeModalProps {
   isOpen: boolean;
