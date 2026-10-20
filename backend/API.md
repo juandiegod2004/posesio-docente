@@ -379,7 +379,10 @@ El propio docente (dueño de ese `id`) o `TALENTO_HUMANO`/`SUPER_USUARIO` puede 
       "tipoDocumentoId": "...",
       "codigo": "HOJA_DE_VIDA",
       "nombre": "Formato único de hoja de vida de la Función Pública",
+      "descripcion": null, // instrucciones largas guardadas en BD (hoy solo algunos tipos las tienen), o null
+      "orden": 14, // posición oficial del tipo en el checklist (0 = autorización); ordenar y numerar por este campo, no por un id propio
       "obligatorio": true,
+      "subidoPor": "DOCENTE", // "DOCENTE" | "TALENTO_HUMANO" | "GESTOR_DOCUMENTAL" — el examen médico y el acta NO los sube el docente (ocultarlos en su vista)
       "documento": { "id": "...", "estado": "EN_REVISION", "archivoNombre": "hoja_de_vida.pdf", "comentarioValidador": null, "subidoEn": "...", "validadoPor": { "nombres": "Andrea", "apellidos": "Validadora" }, "validadoEn": "..." } // validadoPor/validadoEn son null si nunca se ha aprobado/rechazado; documento completo es null si no ha subido nada
     }
   ]

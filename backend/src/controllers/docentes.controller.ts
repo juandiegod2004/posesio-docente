@@ -108,7 +108,10 @@ export const obtenerChecklist = async (req: Request, res: Response) => {
       tipoDocumentoId: tipo.id,
       codigo: tipo.codigo,
       nombre: tipo.nombre,
+      descripcion: tipo.descripcion,
+      orden: tipo.orden,
       obligatorio: tipo.obligatorio,
+      subidoPor: tipo.subidoPor,
       documento: documento
         ? {
             id: documento.id,
