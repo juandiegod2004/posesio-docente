@@ -1,0 +1,19 @@
+# Nada de secretos ni de basura dentro de la imagen.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+.git
+.gitignore
+.DS_Store
+*.log
+npm-debug.log*
+coverage
+
+# Config del Supabase local (CLI) y archivos de desarrollo: no se usan en producción.
+supabase
+Dockerfile
+.dockerignore
+*.md

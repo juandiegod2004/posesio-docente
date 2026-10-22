@@ -33,6 +33,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Quita la cabecera `X-Powered-By: Next.js`: no aporta nada y revela el framework.
+  poweredByHeader: false,
   // El dev server de Next.js bloquea en silencio los assets (incluido el script de
   // Turnstile) cuando se accede por un hostname que no sea localhost. Necesario
   // para probar desde el celular por wifi vía la IP de LAN del Mac.
